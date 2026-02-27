@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Welcome to LokLok</title>
+<!-- Fonts -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<!-- Material Symbols -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<!-- Theme Configuration -->
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#f44725",
+                        "background-light": "#f8f6f5",
+                        "background-dark": "#221310",
+                    },
+                    fontFamily: {
+                        "display": ["Plus Jakarta Sans", "sans-serif"]
+                    },
+                    borderRadius: {"DEFAULT": "1rem", "lg": "2rem", "xl": "3rem", "full": "9999px"},
+                },
+            },
+        }
+    </script>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background-light dark:bg-background-dark font-display antialiased text-slate-900 dark:text-slate-100 min-h-screen flex flex-col items-center justify-center overflow-x-hidden">
+<div class="relative flex h-full w-full max-w-md flex-col bg-background-light dark:bg-background-dark overflow-hidden min-h-screen">
+<!-- Top App Bar -->
+<div class="flex items-center p-4 justify-between z-10">
+<div class="text-primary flex size-12 shrink-0 items-center justify-center rounded-full bg-primary/10">
+<span class="material-symbols-outlined text-[24px]">brush</span>
+</div>
+<h2 class="text-slate-900 dark:text-white text-lg font-bold leading-tight tracking-[-0.015em] flex-1 text-center pr-12">LokLok</h2>
+</div>
+<!-- Main Content Area -->
+<div class="flex flex-1 flex-col items-center justify-center px-6 pt-4 pb-8">
+<!-- Hero Illustration Placeholder -->
+<div class="w-full relative aspect-[4/5] max-h-[400px] mb-8 rounded-xl overflow-hidden shadow-2xl shadow-primary/10">
+<!-- Decorative background elements -->
+<div class="absolute inset-0 bg-gradient-to-b from-primary/5 to-primary/20 dark:to-primary/10"></div>
+<div class="absolute top-1/4 left-1/4 w-32 h-32 bg-primary/20 rounded-full blur-3xl"></div>
+<div class="absolute bottom-1/4 right-1/4 w-40 h-40 bg-orange-400/20 rounded-full blur-3xl"></div>
+<!-- Main Image -->
+<div class="w-full h-full bg-center bg-cover bg-no-repeat relative z-10" data-alt="Two hands holding phones connected by glowing doodles" style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuDPhhA4OYIzby8pW7jH8koP7PDh1N8bAsNHW7AnsZbSpbt6HLrxUbIfw_UvZK2olyF5HikQyKLCPvzQYHIXvk7Y0PVZaxg6Wbk6RlwC1wKurb_JZUQVIjsxXZdTls0bNbVw4zl_Q7iEBubFcQ2z56_JyzEAc2DgvwsD5-V3f7Q0cK1FuiXx2WnxCt1iUBkEd-T3hU77bVcCE13Dd4ZTtFPxSU_PRg5DmFq0MkA_ze2AIz9UQF9ADZ5ADuRczaY_6FbQybbCe4f9YC9O");'>
+</div>
+<!-- Overlay doodle effect -->
+<div class="absolute inset-0 z-20 pointer-events-none opacity-80 mix-blend-screen">
+<svg height="100%" viewbox="0 0 100 100" width="100%" xmlns="http://www.w3.org/2000/svg">
+<path d="M 20 80 Q 50 20 80 80" fill="none" stroke="#f44725" stroke-dasharray="5,5" stroke-linecap="round" stroke-width="2"></path>
+<circle cx="20" cy="80" fill="#f44725" r="3"></circle>
+<circle cx="80" cy="80" fill="#f44725" r="3"></circle>
+</svg>
+</div>
+</div>
+<!-- Text Content -->
+<div class="flex flex-col items-center gap-4 text-center max-w-xs mx-auto">
+<h1 class="text-slate-900 dark:text-white tracking-tight text-[32px] font-bold leading-tight">
+                    Draw Together
+                </h1>
+<p class="text-slate-600 dark:text-slate-300 text-base font-normal leading-relaxed">
+                    Draw on your lock screen, see it on theirs. Stay connected with friends and loved ones in the most creative way.
+                </p>
+</div>
+<!-- Pagination Indicators (Optional visual flair for onboarding) -->
+<div class="flex gap-2 mt-8 mb-4">
+<div class="w-2 h-2 rounded-full bg-primary"></div>
+<div class="w-2 h-2 rounded-full bg-slate-300 dark:bg-slate-700"></div>
+<div class="w-2 h-2 rounded-full bg-slate-300 dark:bg-slate-700"></div>
+</div>
+</div>
+<!-- Sticky Bottom Action -->
+<div class="w-full p-6 pb-8 bg-background-light dark:bg-background-dark sticky bottom-0 z-20">
+<button class="group relative flex w-full cursor-pointer items-center justify-center overflow-hidden rounded-full h-14 bg-primary text-white text-lg font-bold leading-normal tracking-[0.015em] shadow-lg shadow-primary/25 transition-transform active:scale-[0.98]">
+<span class="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out"></span>
+<span class="relative z-10 flex items-center gap-2">
+                    Get Started 
+                    <span class="material-symbols-outlined text-[20px]">arrow_forward</span>
+</span>
+</button>
+</div>
+</div>
+</body></html>

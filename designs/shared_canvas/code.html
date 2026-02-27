@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Shared Canvas</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@200;300;400;500;600;700;800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#f44725",
+                        "background-light": "#f8f6f5",
+                        "background-dark": "#221310",
+                    },
+                    fontFamily: {
+                        "display": ["Plus Jakarta Sans", "sans-serif"]
+                    },
+                    borderRadius: {"DEFAULT": "1rem", "lg": "2rem", "xl": "3rem", "full": "9999px"},
+                },
+            },
+        }
+    </script>
+<style>
+        .glass-panel {
+            background: rgba(34, 19, 16, 0.7);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background-light dark:bg-background-dark font-display antialiased overflow-hidden">
+<div class="relative flex h-screen w-full flex-col overflow-hidden">
+<!-- Wallpaper Background -->
+<div class="absolute inset-0 z-0">
+<img alt="Abstract dark fluid gradient wallpaper" class="h-full w-full object-cover opacity-80" data-alt="Abstract dark fluid gradient wallpaper" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCB4QuM6FmE2xJeBzKDtBkRB-5IqGcdwiwmqINx4_LPw8Ok_vpyyK5obcrsvRFEDnK52HHMB786J7Q4uwQIfSFVJuHG2fztUnjOkCd-4EKpH2eYHyIlTsN1Sd-DpeuEYGH6_UBFOafD1LX7Pz751zlE7xsCXetO62NlZ2MUDrndefSPgN7VFJq_hZApo5PqPVttsU6trgVyT8f4HGhmWrd-61ZuQBP4VgAkdEWSKqvzKuV2DN4vYxKolW0RrBHCSl-gynYX-7bSPrGJ"/>
+<div class="absolute inset-0 bg-gradient-to-b from-background-dark/80 via-transparent to-background-dark/90"></div>
+</div>
+<!-- Top Bar -->
+<header class="relative z-10 flex flex-col pt-safe-top">
+<div class="flex items-center justify-between p-4 pb-2">
+<button class="text-white/80 hover:text-white transition-colors flex size-12 shrink-0 items-center justify-center rounded-full active:bg-white/10">
+<span class="material-symbols-outlined text-[24px]">arrow_back</span>
+</button>
+<h2 class="text-white text-lg font-bold leading-tight tracking-[-0.015em] flex-1 text-center drop-shadow-md">Shared Canvas</h2>
+<button class="flex h-12 items-center justify-center px-4 rounded-full active:bg-white/10">
+<p class="text-primary text-base font-bold leading-normal tracking-[0.015em]">Save</p>
+</button>
+</div>
+<!-- Partner Status -->
+<div class="flex justify-center w-full">
+<div class="flex items-center gap-2 bg-black/30 backdrop-blur-md px-4 py-1.5 rounded-full border border-white/10">
+<span class="relative flex h-2.5 w-2.5">
+<span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
+<span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-primary"></span>
+</span>
+<p class="text-white/90 text-xs font-medium leading-normal">Partner is drawing...</p>
+</div>
+</div>
+</header>
+<!-- Main Canvas Area (Invisible interactive area) -->
+<div class="flex-1 relative z-0 touch-none">
+<!-- Simulated drawing strokes for visual context -->
+<svg class="absolute inset-0 w-full h-full pointer-events-none opacity-80" xmlns="http://www.w3.org/2000/svg">
+<path d="M50,200 Q150,100 250,250 T350,200" fill="none" stroke="#f44725" stroke-linecap="round" stroke-width="8"></path>
+<circle cx="200" cy="300" fill="#4cd964" opacity="0.8" r="20"></circle>
+<path d="M100,400 C150,450 250,350 300,450" fill="none" stroke="#ffcc00" stroke-dasharray="1, 20" stroke-linecap="round" stroke-width="12"></path>
+</svg>
+</div>
+<!-- Bottom Controls -->
+<div class="relative z-20 w-full pb-safe-bottom">
+<div class="glass-panel w-full rounded-t-xl px-6 pb-8 pt-4 shadow-2xl ring-1 ring-white/5">
+<!-- Brush Size Slider -->
+<div class="mb-6 flex flex-col gap-3">
+<div class="flex w-full items-center justify-between text-white/80">
+<span class="text-xs font-medium uppercase tracking-wider text-white/50">Brush Size</span>
+<span class="text-sm font-bold font-mono">15px</span>
+</div>
+<div class="relative flex h-8 items-center w-full">
+<div class="absolute w-full h-1.5 bg-white/10 rounded-full overflow-hidden">
+<div class="h-full w-[32%] bg-gradient-to-r from-primary/80 to-primary rounded-full"></div>
+</div>
+<div class="absolute left-[32%] h-6 w-6 rounded-full bg-white shadow-lg ring-4 ring-primary/20 transform -translate-x-1/2 cursor-pointer hover:scale-110 transition-transform"></div>
+</div>
+</div>
+<!-- Color Picker -->
+<div class="flex items-center justify-between gap-2 overflow-x-auto pb-6 scrollbar-hide">
+<label class="group relative flex cursor-pointer items-center justify-center">
+<input checked="" class="peer sr-only" name="color" type="radio"/>
+<div class="h-10 w-10 rounded-full bg-[#ff3b30] ring-2 ring-transparent ring-offset-2 ring-offset-background-dark peer-checked:ring-white/80 transition-all hover:scale-110 peer-checked:scale-110"></div>
+</label>
+<label class="group relative flex cursor-pointer items-center justify-center">
+<input class="peer sr-only" name="color" type="radio"/>
+<div class="h-10 w-10 rounded-full bg-[#ff9500] ring-2 ring-transparent ring-offset-2 ring-offset-background-dark peer-checked:ring-white/80 transition-all hover:scale-110 peer-checked:scale-110"></div>
+</label>
+<label class="group relative flex cursor-pointer items-center justify-center">
+<input class="peer sr-only" name="color" type="radio"/>
+<div class="h-10 w-10 rounded-full bg-[#ffcc00] ring-2 ring-transparent ring-offset-2 ring-offset-background-dark peer-checked:ring-white/80 transition-all hover:scale-110 peer-checked:scale-110"></div>
+</label>
+<label class="group relative flex cursor-pointer items-center justify-center">
+<input class="peer sr-only" name="color" type="radio"/>
+<div class="h-10 w-10 rounded-full bg-[#4cd964] ring-2 ring-transparent ring-offset-2 ring-offset-background-dark peer-checked:ring-white/80 transition-all hover:scale-110 peer-checked:scale-110"></div>
+</label>
+<label class="group relative flex cursor-pointer items-center justify-center">
+<input class="peer sr-only" name="color" type="radio"/>
+<div class="h-10 w-10 rounded-full bg-[#5ac8fa] ring-2 ring-transparent ring-offset-2 ring-offset-background-dark peer-checked:ring-white/80 transition-all hover:scale-110 peer-checked:scale-110"></div>
+</label>
+<label class="group relative flex cursor-pointer items-center justify-center">
+<input class="peer sr-only" name="color" type="radio"/>
+<div class="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 ring-2 ring-transparent ring-offset-2 ring-offset-background-dark peer-checked:ring-white/80 transition-all hover:bg-white/20">
+<span class="material-symbols-outlined text-white text-[20px]">add</span>
+</div>
+</label>
+</div>
+<!-- Tools Toolbar -->
+<div class="flex items-center justify-between gap-4">
+<div class="flex items-center gap-2 rounded-full bg-black/40 p-1.5 ring-1 ring-white/10">
+<button class="flex h-12 w-12 items-center justify-center rounded-full bg-white/10 text-primary transition-all hover:bg-white/20 active:scale-95">
+<span class="material-symbols-outlined filled">edit</span>
+</button>
+<button class="flex h-12 w-12 items-center justify-center rounded-full text-white/60 transition-all hover:bg-white/10 hover:text-white active:scale-95">
+<span class="material-symbols-outlined">ink_eraser</span>
+</button>
+<button class="flex h-12 w-12 items-center justify-center rounded-full text-white/60 transition-all hover:bg-white/10 hover:text-white active:scale-95">
+<span class="material-symbols-outlined">delete</span>
+</button>
+</div>
+<div class="h-8 w-px bg-white/10"></div>
+<div class="flex gap-2">
+<button class="flex h-12 w-12 items-center justify-center rounded-full bg-black/40 text-white transition-all hover:bg-black/60 ring-1 ring-white/10 active:scale-95">
+<span class="material-symbols-outlined">undo</span>
+</button>
+<button class="flex h-12 items-center justify-center gap-2 rounded-full bg-primary px-6 text-white font-semibold shadow-lg shadow-primary/20 transition-all hover:bg-primary/90 active:scale-95">
+<span class="material-symbols-outlined text-[20px]">check</span>
+<span>Done</span>
+</button>
+</div>
+</div>
+</div>
+</div>
+</div>
+</body></html>

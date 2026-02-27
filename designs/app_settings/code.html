@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>App Settings</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#f44725",
+                        "background-light": "#f8f6f5",
+                        "background-dark": "#221310",
+                    },
+                    fontFamily: {
+                        "display": ["Plus Jakarta Sans", "sans-serif"]
+                    },
+                    borderRadius: {"DEFAULT": "1rem", "lg": "2rem", "xl": "3rem", "full": "9999px"},
+                },
+            },
+        }
+    </script>
+<style>
+        /* Custom scrollbar for webkit to hide it but keep functionality if needed */
+        .scrollbar-hide::-webkit-scrollbar {
+            display: none;
+        }
+        .scrollbar-hide {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background-light dark:bg-background-dark font-display min-h-screen flex justify-center">
+<div class="w-full max-w-md bg-background-light dark:bg-background-dark min-h-screen flex flex-col relative overflow-hidden">
+<!-- Header -->
+<div class="sticky top-0 z-10 bg-background-light/90 dark:bg-background-dark/90 backdrop-blur-md border-b border-primary/10 dark:border-primary/5 p-4 flex items-center justify-between">
+<button class="flex items-center justify-center size-10 rounded-full text-slate-900 dark:text-slate-100 hover:bg-primary/10 transition-colors">
+<span class="material-symbols-outlined">arrow_back</span>
+</button>
+<h1 class="text-lg font-bold text-slate-900 dark:text-slate-100">Settings</h1>
+<div class="size-10"></div> <!-- Spacer for center alignment -->
+</div>
+<!-- Content -->
+<div class="flex-1 overflow-y-auto scrollbar-hide pb-10">
+<!-- Hero / Profile Section -->
+<div class="px-6 py-8 flex flex-col items-center">
+<div class="relative group">
+<div class="size-24 rounded-full bg-gradient-to-br from-primary to-orange-400 p-1 mb-3 shadow-lg shadow-primary/20">
+<img alt="User profile picture" class="w-full h-full object-cover rounded-full border-4 border-background-light dark:border-background-dark" data-alt="Smiling young woman portrait" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDAujn73sIDEGSvEjfnnmZqmOO-ZiFlw82uXpvKxNrt8SvwzMVBtUMlTtBU5JoN_LwEMKI8xqU0n7TqBifNPNB5VfM2IttwlolJuxD9l4L0qZhSK0chl0jfk8IwqCbdnUw0AB2hzyevXxeeR2gKr5-W3qdkT8asEhJylekPFxr2pcdwTH-eRJvSD9VRPbSd1AYwRjpH7jrDzyDRy7mzB2pl-CtNmrKDMV2hlCiChaqfysWfKAB0m5W58GdPdyoEO7x6avj2OuGMQSKT"/>
+</div>
+<button class="absolute bottom-3 right-0 bg-primary text-white rounded-full p-1.5 shadow-md hover:bg-red-600 transition-colors">
+<span class="material-symbols-outlined text-sm">edit</span>
+</button>
+</div>
+<h2 class="text-xl font-bold text-slate-900 dark:text-white">Sarah Jenkins</h2>
+<p class="text-sm text-slate-500 dark:text-slate-400">sarah.j@example.com</p>
+<div class="flex gap-3 mt-6 w-full">
+<button class="flex-1 py-2.5 px-4 bg-primary/10 hover:bg-primary/20 text-primary font-semibold rounded-lg transition-colors flex items-center justify-center gap-2">
+<span class="material-symbols-outlined text-[20px]">group_add</span>
+                        Invite Partner
+                    </button>
+<button class="flex-1 py-2.5 px-4 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-semibold rounded-lg transition-colors flex items-center justify-center gap-2">
+<span class="material-symbols-outlined text-[20px]">share</span>
+                        Share Profile
+                    </button>
+</div>
+</div>
+<!-- General Settings Section -->
+<div class="px-4 mt-2">
+<h3 class="text-slate-500 dark:text-slate-400 text-sm font-bold uppercase tracking-wider px-2 mb-3">General</h3>
+<div class="bg-white dark:bg-[#2e1a16] rounded-xl overflow-hidden shadow-sm border border-slate-100 dark:border-transparent">
+<!-- Lock Screen Overlay -->
+<div class="flex items-center gap-4 p-4 border-b border-slate-100 dark:border-white/5 hover:bg-slate-50 dark:hover:bg-white/5 transition-colors cursor-pointer">
+<div class="flex items-center justify-center rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 shrink-0 size-10">
+<span class="material-symbols-outlined">wallpaper</span>
+</div>
+<div class="flex-1">
+<p class="text-slate-900 dark:text-white text-base font-semibold">Lock Screen Overlay</p>
+<p class="text-slate-500 dark:text-slate-400 text-xs mt-0.5">Show drawings on wake</p>
+</div>
+<div class="shrink-0">
+<label class="relative flex h-[31px] w-[51px] cursor-pointer items-center rounded-full border-none bg-slate-200 dark:bg-[#492922] p-0.5 has-[:checked]:justify-end has-[:checked]:bg-primary transition-colors duration-200">
+<div class="h-full w-[27px] rounded-full bg-white shadow-md"></div>
+<input checked="" class="invisible absolute" type="checkbox"/>
+</label>
+</div>
+</div>
+<!-- Notification Alerts -->
+<div class="flex items-center gap-4 p-4 hover:bg-slate-50 dark:hover:bg-white/5 transition-colors cursor-pointer">
+<div class="flex items-center justify-center rounded-full bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 shrink-0 size-10">
+<span class="material-symbols-outlined">notifications_active</span>
+</div>
+<div class="flex-1">
+<p class="text-slate-900 dark:text-white text-base font-semibold">Notification Alerts</p>
+<p class="text-slate-500 dark:text-slate-400 text-xs mt-0.5">Notify when partner draws</p>
+</div>
+<div class="shrink-0">
+<label class="relative flex h-[31px] w-[51px] cursor-pointer items-center rounded-full border-none bg-slate-200 dark:bg-[#492922] p-0.5 has-[:checked]:justify-end has-[:checked]:bg-primary transition-colors duration-200">
+<div class="h-full w-[27px] rounded-full bg-white shadow-md"></div>
+<input class="invisible absolute" type="checkbox"/>
+</label>
+</div>
+</div>
+</div>
+</div>
+<!-- Drawing Tools Section -->
+<div class="px-4 mt-8">
+<h3 class="text-slate-500 dark:text-slate-400 text-sm font-bold uppercase tracking-wider px-2 mb-3">Drawing Tools</h3>
+<div class="bg-white dark:bg-[#2e1a16] rounded-xl overflow-hidden shadow-sm border border-slate-100 dark:border-transparent">
+<!-- Default Brush -->
+<div class="p-4 border-b border-slate-100 dark:border-white/5">
+<div class="flex items-center gap-4 mb-3">
+<div class="flex items-center justify-center rounded-full bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 shrink-0 size-10">
+<span class="material-symbols-outlined">brush</span>
+</div>
+<div class="flex-1">
+<p class="text-slate-900 dark:text-white text-base font-semibold">Default Brush Style</p>
+</div>
+<button class="text-primary text-sm font-semibold">Edit</button>
+</div>
+<div class="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+<button class="flex-1 min-w-[80px] p-2 rounded-lg bg-primary/10 border-2 border-primary flex flex-col items-center gap-2">
+<div class="w-full h-8 rounded bg-gradient-to-r from-transparent via-primary to-transparent opacity-80 blur-[2px]"></div>
+<span class="text-xs font-medium text-primary">Neon Glow</span>
+</button>
+<button class="flex-1 min-w-[80px] p-2 rounded-lg bg-slate-50 dark:bg-white/5 border-2 border-transparent hover:bg-slate-100 dark:hover:bg-white/10 flex flex-col items-center gap-2">
+<div class="w-full h-8 rounded bg-slate-900 dark:bg-white"></div>
+<span class="text-xs font-medium text-slate-600 dark:text-slate-400">Solid</span>
+</button>
+<button class="flex-1 min-w-[80px] p-2 rounded-lg bg-slate-50 dark:bg-white/5 border-2 border-transparent hover:bg-slate-100 dark:hover:bg-white/10 flex flex-col items-center gap-2">
+<div class="w-full h-8 rounded border-b-4 border-dotted border-slate-500 dark:border-slate-400"></div>
+<span class="text-xs font-medium text-slate-600 dark:text-slate-400">Pencil</span>
+</button>
+</div>
+</div>
+<!-- Canvas Color -->
+<div class="flex items-center gap-4 p-4 hover:bg-slate-50 dark:hover:bg-white/5 transition-colors cursor-pointer">
+<div class="flex items-center justify-center rounded-full bg-teal-100 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400 shrink-0 size-10">
+<span class="material-symbols-outlined">palette</span>
+</div>
+<div class="flex-1">
+<p class="text-slate-900 dark:text-white text-base font-semibold">Default Ink Color</p>
+</div>
+<div class="shrink-0 flex items-center gap-2">
+<div class="size-6 rounded-full bg-[#f44725] border-2 border-white dark:border-slate-700 shadow-sm"></div>
+<span class="material-symbols-outlined text-slate-400 text-lg">chevron_right</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Account Management -->
+<div class="px-4 mt-8 mb-6">
+<h3 class="text-slate-500 dark:text-slate-400 text-sm font-bold uppercase tracking-wider px-2 mb-3">Account</h3>
+<div class="bg-white dark:bg-[#2e1a16] rounded-xl overflow-hidden shadow-sm border border-slate-100 dark:border-transparent">
+<button class="w-full flex items-center gap-4 p-4 border-b border-slate-100 dark:border-white/5 hover:bg-slate-50 dark:hover:bg-white/5 text-left transition-colors">
+<div class="flex items-center justify-center rounded-full bg-slate-100 dark:bg-white/5 text-slate-600 dark:text-slate-400 shrink-0 size-10">
+<span class="material-symbols-outlined">manage_accounts</span>
+</div>
+<span class="text-slate-900 dark:text-white text-base font-medium flex-1">Account Management</span>
+<span class="material-symbols-outlined text-slate-400">chevron_right</span>
+</button>
+<button class="w-full flex items-center gap-4 p-4 border-b border-slate-100 dark:border-white/5 hover:bg-slate-50 dark:hover:bg-white/5 text-left transition-colors">
+<div class="flex items-center justify-center rounded-full bg-slate-100 dark:bg-white/5 text-slate-600 dark:text-slate-400 shrink-0 size-10">
+<span class="material-symbols-outlined">help</span>
+</div>
+<span class="text-slate-900 dark:text-white text-base font-medium flex-1">Support &amp; FAQ</span>
+<span class="material-symbols-outlined text-slate-400">chevron_right</span>
+</button>
+<button class="w-full flex items-center gap-4 p-4 hover:bg-red-50 dark:hover:bg-red-900/10 text-left transition-colors group/logout">
+<div class="flex items-center justify-center rounded-full bg-red-100 dark:bg-red-900/20 text-red-600 dark:text-red-400 shrink-0 size-10 group-hover/logout:bg-red-200 dark:group-hover/logout:bg-red-900/40 transition-colors">
+<span class="material-symbols-outlined">logout</span>
+</div>
+<span class="text-red-600 dark:text-red-400 text-base font-medium flex-1">Log Out</span>
+</button>
+</div>
+</div>
+<div class="text-center pb-8 pt-4">
+<p class="text-xs text-slate-400 dark:text-slate-600">Version 2.4.0 (Build 302)</p>
+</div>
+</div>
+</div>
+</body></html>
