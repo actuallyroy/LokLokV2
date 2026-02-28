@@ -197,10 +197,10 @@ export const PairDeviceScreen: React.FC<PairDeviceScreenProps> = ({
         {/* Buttons */}
         <View style={[styles.buttonContainer, { paddingBottom: insets.bottom + spacing.xxxl }]}>
           <Button
-            title="Scan Partner's Code"
-            onPress={handleScanCode}
+            title={isPaired ? "Start Drawing" : "Scan Partner's Code"}
+            onPress={isPaired ? () => navigation.navigate('SharedCanvas') : handleScanCode}
             variant="primary"
-            icon="qr-code-scanner"
+            icon={isPaired ? "brush" : "qr-code-scanner"}
             iconPosition="left"
           />
           {!hasCompletedOnboarding && (

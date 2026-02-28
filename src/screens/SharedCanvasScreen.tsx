@@ -3,11 +3,11 @@ import {
   View,
   Text,
   StyleSheet,
-  SafeAreaView,
-  Image,
+  StatusBar,
   Dimensions,
 } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Header } from '../components/common';
 import {
@@ -36,6 +36,7 @@ interface SharedCanvasScreenProps {
 export const SharedCanvasScreen: React.FC<SharedCanvasScreenProps> = ({
   navigation,
 }) => {
+  const insets = useSafeAreaInsets();
   const {
     strokes,
     currentColor,
@@ -80,14 +81,17 @@ export const SharedCanvasScreen: React.FC<SharedCanvasScreenProps> = ({
 
   return (
     <GestureHandlerRootView style={styles.container}>
-      <SafeAreaView style={styles.safeArea}>
-        {/* Header */}
+      <StatusBar barStyle="light-content" backgroundColor={colors.backgroundDark} />
+
+      {/* Header */}
+      <View style={{ paddingTop: insets.top }}>
         <Header
           title="Shared Canvas"
           onBack={() => navigation.goBack()}
           rightText="Save"
           onRightPress={handleSave}
         />
+      </View>
 
         {/* Partner Status */}
         {isPartnerDrawing && (
@@ -117,7 +121,7 @@ export const SharedCanvasScreen: React.FC<SharedCanvasScreenProps> = ({
         </View>
 
         {/* Bottom Glass Panel */}
-        <View style={styles.bottomPanel}>
+        <View style={[styles.bottomPanel, { paddingBottom: insets.bottom + spacing.xl }]}>
           {/* Brush Size Slider */}
           <BrushSizeSlider
             value={brushSize}
@@ -143,7 +147,6 @@ export const SharedCanvasScreen: React.FC<SharedCanvasScreenProps> = ({
             canUndo={strokes.length > 0}
           />
         </View>
-      </SafeAreaView>
     </GestureHandlerRootView>
   );
 };
@@ -152,9 +155,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.backgroundDark,
-  },
-  safeArea: {
-    flex: 1,
   },
   partnerStatus: {
     flexDirection: 'row',
@@ -198,7 +198,6 @@ const styles = StyleSheet.create({
     borderTopRightRadius: borderRadius.xl,
     paddingHorizontal: spacing.xxl,
     paddingTop: spacing.xl,
-    paddingBottom: spacing.xxxl,
     gap: spacing.lg,
   },
   colorPickerContainer: {
