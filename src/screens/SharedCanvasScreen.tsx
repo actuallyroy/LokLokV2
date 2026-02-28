@@ -5,7 +5,9 @@ import {
   StyleSheet,
   StatusBar,
   Dimensions,
+  TouchableOpacity,
 } from 'react-native';
+import { MaterialIcons } from '@expo/vector-icons';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -88,8 +90,14 @@ export const SharedCanvasScreen: React.FC<SharedCanvasScreenProps> = ({
         <Header
           title="Shared Canvas"
           onBack={() => navigation.goBack()}
-          rightText="Save"
-          onRightPress={handleSave}
+          rightElement={
+            <TouchableOpacity
+              onPress={() => navigation.navigate('Settings')}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <MaterialIcons name="settings" size={24} color={colors.textPrimary} />
+            </TouchableOpacity>
+          }
         />
       </View>
 

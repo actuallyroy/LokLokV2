@@ -1,4 +1,6 @@
 import { create } from 'zustand';
+import { persist, createJSONStorage } from 'zustand/middleware';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { colors } from '../theme';
 
 export type BrushStyle = 'neon' | 'solid' | 'pencil';
@@ -27,30 +29,41 @@ interface SettingsState {
   setDefaultInkColor: (color: string) => void;
   setUserProfile: (name: string, email: string, avatar?: string) => void;
   setOnboardingComplete: () => void;
+  resetOnboarding: () => void;
 }
 
-export const useSettingsStore = create<SettingsState>()((set) => ({
-  // Initial state
-  lockScreenOverlay: true,
-  notificationAlerts: false,
-  defaultBrushStyle: 'neon',
-  defaultInkColor: colors.primary,
-  userName: 'Sarah Jenkins',
-  userEmail: 'sarah.j@example.com',
-  userAvatar: null,
-  hasCompletedOnboarding: false,
+export const useSettingsStore = create<SettingsState>()(
+  persist(
+    (set) => ({
+      // Initial state
+      lockScreenOverlay: true,
+      notificationAlerts: false,
+      defaultBrushStyle: 'neon',
+      defaultInkColor: colors.primary,
+      userName: 'Sarah Jenkins',
+      userEmail: 'sarah.j@example.com',
+      userAvatar: null,
+      hasCompletedOnboarding: false,
 
-  // Actions
-  setLockScreenOverlay: (value) => set({ lockScreenOverlay: value }),
+      // Actions
+      setLockScreenOverlay: (value) => set({ lockScreenOverlay: value }),
 
-  setNotificationAlerts: (value) => set({ notificationAlerts: value }),
+      setNotificationAlerts: (value) => set({ notificationAlerts: value }),
 
-  setDefaultBrushStyle: (style) => set({ defaultBrushStyle: style }),
+      setDefaultBrushStyle: (style) => set({ defaultBrushStyle: style }),
 
-  setDefaultInkColor: (color) => set({ defaultInkColor: color }),
+      setDefaultInkColor: (color) => set({ defaultInkColor: color }),
 
-  setUserProfile: (name, email, avatar) =>
-    set({ userName: name, userEmail: email, userAvatar: avatar || null }),
+      setUserProfile: (name, email, avatar) =>
+        set({ userName: name, userEmail: email, userAvatar: avatar || null }),
 
-  setOnboardingComplete: () => set({ hasCompletedOnboarding: true }),
-}));
+      setOnboardingComplete: () => set({ hasCompletedOnboarding: true }),
+
+      resetOnboarding: () => set({ hasCompletedOnboarding: false }),
+    }),
+    {
+      name: 'loklok-settings',
+      storage: createJSONStorage(() => AsyncStorage),
+    }
+  )
+);
