@@ -1,11 +1,10 @@
-import React, { useRef, useState, useCallback } from 'react';
+import React, { useRef, useState, useMemo } from 'react';
 import { View, StyleSheet, Dimensions } from 'react-native';
 import {
   GestureDetector,
   Gesture,
-  GestureHandlerRootView,
 } from 'react-native-gesture-handler';
-import Svg, { Path, G } from 'react-native-svg';
+import Svg, { Path, G, Defs, Mask, Rect } from 'react-native-svg';
 import { colors } from '../../theme';
 
 export interface Stroke {
@@ -13,6 +12,7 @@ export interface Stroke {
   path: string;
   color: string;
   strokeWidth: number;
+  isEraser?: boolean;
 }
 
 interface DrawingCanvasProps {
@@ -54,8 +54,9 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
         const newStroke: Stroke = {
           id: generateId(),
           path: pathRef.current,
-          color: isEraser ? colors.backgroundDark : currentColor,
+          color: isEraser ? '#000000' : currentColor,
           strokeWidth: isEraser ? brushSize * 2 : brushSize,
+          isEraser: isEraser,
         };
         onStrokesChange([...strokes, newStroke]);
         pathRef.current = '';
@@ -65,14 +66,59 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
     .minDistance(1)
     .runOnJS(true);
 
+  // Separate drawing strokes and eraser strokes
+  const { drawingStrokes, eraserStrokes } = useMemo(() => {
+    const drawing: Stroke[] = [];
+    const eraser: Stroke[] = [];
+    strokes.forEach((stroke) => {
+      if (stroke.isEraser) {
+        eraser.push(stroke);
+      } else {
+        drawing.push(stroke);
+      }
+    });
+    return { drawingStrokes: drawing, eraserStrokes: eraser };
+  }, [strokes]);
+
   return (
     <View style={styles.container}>
       <GestureDetector gesture={panGesture}>
         <View style={styles.canvasContainer}>
           <Svg style={styles.svg}>
-            <G>
-              {/* Render completed strokes */}
-              {strokes.map((stroke) => (
+            <Defs>
+              {/* Mask for eraser effect - white is visible, black is erased */}
+              <Mask id="eraserMask">
+                {/* Start with everything visible (white) */}
+                <Rect x="0" y="0" width="100%" height="100%" fill="white" />
+                {/* Eraser strokes cut holes (black) */}
+                {eraserStrokes.map((stroke) => (
+                  <Path
+                    key={stroke.id}
+                    d={stroke.path}
+                    stroke="black"
+                    strokeWidth={stroke.strokeWidth}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    fill="none"
+                  />
+                ))}
+                {/* Current eraser stroke preview */}
+                {currentPath && isEraser && (
+                  <Path
+                    d={currentPath}
+                    stroke="black"
+                    strokeWidth={brushSize * 2}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    fill="none"
+                  />
+                )}
+              </Mask>
+            </Defs>
+
+            {/* Drawing strokes with eraser mask applied */}
+            <G mask="url(#eraserMask)">
+              {drawingStrokes.map((stroke) => (
                 <Path
                   key={stroke.id}
                   d={stroke.path}
@@ -83,12 +129,12 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
                   fill="none"
                 />
               ))}
-              {/* Render current stroke being drawn */}
-              {currentPath && (
+              {/* Current drawing stroke preview */}
+              {currentPath && !isEraser && (
                 <Path
                   d={currentPath}
-                  stroke={isEraser ? colors.backgroundDark : currentColor}
-                  strokeWidth={isEraser ? brushSize * 2 : brushSize}
+                  stroke={currentColor}
+                  strokeWidth={brushSize}
                   strokeLinecap="round"
                   strokeLinejoin="round"
                   fill="none"
