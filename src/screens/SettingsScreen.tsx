@@ -7,15 +7,14 @@ import {
   ScrollView,
   TouchableOpacity,
   Alert,
-  Platform,
+  Linking,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Header, Toggle, Avatar, SettingsItem } from '../components/common';
 import { colors, typography, spacing, borderRadius } from '../theme';
 import { RootStackParamList } from '../navigation/AppNavigator';
-import { useSettingsStore, BrushStyle } from '../store';
-import { LockScreen } from '../modules';
+import { useSettingsStore, usePairingStore, BrushStyle } from '../store';
 
 type SettingsScreenNavigationProp = NativeStackNavigationProp<
   RootStackParamList,
@@ -26,99 +25,75 @@ interface SettingsScreenProps {
   navigation: SettingsScreenNavigationProp;
 }
 
-const brushStyles: { id: BrushStyle; label: string; icon: 'neon' | 'solid' | 'dotted' }[] = [
-  { id: 'neon', label: 'Neon Glow', icon: 'neon' },
-  { id: 'solid', label: 'Solid', icon: 'solid' },
-  { id: 'pencil', label: 'Pencil', icon: 'dotted' },
+const brushStyles: { id: BrushStyle; label: string }[] = [
+  { id: 'neon', label: 'Neon Glow' },
+  { id: 'solid', label: 'Solid' },
+  { id: 'pencil', label: 'Pencil' },
 ];
 
 export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   navigation,
 }) => {
   const {
-    lockScreenOverlay,
+    autoApplyDrawings,
     notificationAlerts,
     defaultBrushStyle,
     defaultInkColor,
     userName,
     userEmail,
     userAvatar,
-    setLockScreenOverlay,
+    setAutoApplyDrawings,
     setNotificationAlerts,
     setDefaultBrushStyle,
   } = useSettingsStore();
 
-  const [isServiceRunning, setIsServiceRunning] = useState(false);
+  const { isPaired, partnerName, disconnect } = usePairingStore();
 
-  // Check service status on mount
-  useEffect(() => {
-    checkServiceStatus();
-  }, []);
-
-  const checkServiceStatus = useCallback(async () => {
-    if (Platform.OS === 'android') {
-      const running = await LockScreen.isServiceRunning();
-      setIsServiceRunning(running);
+  const handleAutoApplyToggle = useCallback((enabled: boolean) => {
+    setAutoApplyDrawings(enabled);
+    if (enabled) {
+      Alert.alert(
+        'Auto-Apply Enabled',
+        'When your partner sends a drawing, it will automatically be set as your lockscreen wallpaper.',
+        [{ text: 'OK' }]
+      );
     }
-  }, []);
+  }, [setAutoApplyDrawings]);
 
-  const handleLockScreenToggle = useCallback(async (enabled: boolean) => {
-    if (Platform.OS !== 'android') {
-      Alert.alert('Not Available', 'Lock screen overlay is only available on Android');
-      return;
-    }
+  const handleDisconnect = useCallback(() => {
+    Alert.alert(
+      'Disconnect Partner',
+      `Are you sure you want to disconnect from ${partnerName || 'your partner'}? You'll need to pair again to share drawings.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Disconnect',
+          style: 'destructive',
+          onPress: () => {
+            disconnect();
+            Alert.alert('Disconnected', 'You have been disconnected from your partner.');
+          },
+        },
+      ]
+    );
+  }, [partnerName, disconnect]);
 
-    try {
-      if (enabled) {
-        // Check permission first
-        const hasPermission = await LockScreen.checkOverlayPermission();
-
-        if (!hasPermission) {
-          Alert.alert(
-            'Permission Required',
-            'LokLok needs permission to display over other apps to show drawings on your lock screen.',
-            [
-              { text: 'Cancel', style: 'cancel' },
-              {
-                text: 'Grant Permission',
-                onPress: async () => {
-                  await LockScreen.requestOverlayPermission();
-                  // User will need to manually enable and come back
-                  Alert.alert(
-                    'Enable Permission',
-                    'Please enable "Display over other apps" for LokLok, then come back and try again.'
-                  );
-                },
-              },
-            ]
-          );
-          return;
-        }
-
-        // Start the service
-        await LockScreen.startService();
-        setIsServiceRunning(true);
-        setLockScreenOverlay(true);
-      } else {
-        // Stop the service
-        await LockScreen.stopService();
-        setIsServiceRunning(false);
-        setLockScreenOverlay(false);
-      }
-    } catch (error) {
-      console.error('Error toggling lock screen:', error);
-      Alert.alert('Error', 'Failed to toggle lock screen overlay');
-    }
-  }, [setLockScreenOverlay]);
-
-  const handleTestLockScreen = useCallback(async () => {
-    if (Platform.OS !== 'android') return;
-
-    try {
-      await LockScreen.showLockScreen();
-    } catch (error) {
-      console.error('Error showing lock screen:', error);
-    }
+  const handleLogout = useCallback(() => {
+    Alert.alert(
+      'Log Out',
+      'Are you sure you want to log out?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Log Out',
+          style: 'destructive',
+          onPress: () => {
+            console.log('Logging out...');
+            // TODO: Implement logout
+          },
+        },
+      ]
+    );
   }, []);
 
   const renderBrushStylePreview = (style: BrushStyle, isSelected: boolean) => {
@@ -175,12 +150,35 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
           <Text style={styles.userName}>{userName}</Text>
           <Text style={styles.userEmail}>{userEmail}</Text>
 
+          {/* Partner Status */}
+          {isPaired && (
+            <View style={styles.partnerBadge}>
+              <MaterialIcons name="favorite" size={14} color={colors.primary} />
+              <Text style={styles.partnerBadgeText}>
+                Paired with {partnerName || 'Partner'}
+              </Text>
+            </View>
+          )}
+
           {/* Profile Action Buttons */}
           <View style={styles.profileActions}>
-            <TouchableOpacity style={styles.profileActionButton}>
-              <MaterialIcons name="person-add" size={18} color={colors.primary} />
-              <Text style={styles.profileActionText}>Invite Partner</Text>
-            </TouchableOpacity>
+            {!isPaired ? (
+              <TouchableOpacity
+                style={styles.profileActionButton}
+                onPress={() => navigation.navigate('PairDevice')}
+              >
+                <MaterialIcons name="person-add" size={18} color={colors.primary} />
+                <Text style={styles.profileActionText}>Pair with Partner</Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                style={styles.profileActionButtonDark}
+                onPress={handleDisconnect}
+              >
+                <MaterialIcons name="link-off" size={18} color={colors.textPrimary} />
+                <Text style={styles.profileActionTextDark}>Disconnect</Text>
+              </TouchableOpacity>
+            )}
             <TouchableOpacity style={styles.profileActionButtonDark}>
               <MaterialIcons name="share" size={18} color={colors.textPrimary} />
               <Text style={styles.profileActionTextDark}>Share Profile</Text>
@@ -188,35 +186,42 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
           </View>
         </View>
 
-        {/* General Section */}
+        {/* Lockscreen Section */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>GENERAL</Text>
+          <Text style={styles.sectionTitle}>LOCKSCREEN</Text>
           <View style={styles.sectionContent}>
             <SettingsItem
-              icon="fit-screen"
-              title="Lock Screen Overlay"
-              subtitle={isServiceRunning ? "Service running" : "Show drawings on wake"}
+              icon="lock"
+              iconColor={colors.primary}
+              iconBackgroundColor="rgba(244, 71, 37, 0.15)"
+              title="Auto-Apply Drawings"
+              subtitle="Automatically set partner's drawings as your lockscreen"
               rightElement={
                 <Toggle
-                  value={lockScreenOverlay}
-                  onValueChange={handleLockScreenToggle}
+                  value={autoApplyDrawings}
+                  onValueChange={handleAutoApplyToggle}
                 />
               }
             />
-            {Platform.OS === 'android' && lockScreenOverlay && (
-              <TouchableOpacity
-                style={styles.testButton}
-                onPress={handleTestLockScreen}
-              >
-                <Text style={styles.testButtonText}>Test Lock Screen</Text>
-              </TouchableOpacity>
-            )}
+            <View style={styles.infoBox}>
+              <MaterialIcons name="info-outline" size={16} color={colors.textTertiary} />
+              <Text style={styles.infoText}>
+                When enabled, drawings from your partner will automatically update your lockscreen wallpaper. You can always undo this from the canvas screen.
+              </Text>
+            </View>
+          </View>
+        </View>
+
+        {/* Notifications Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>NOTIFICATIONS</Text>
+          <View style={styles.sectionContent}>
             <SettingsItem
               icon="notifications"
               iconColor="#9C27B0"
               iconBackgroundColor="rgba(156, 39, 176, 0.15)"
-              title="Notification Alerts"
-              subtitle="Notify when partner draws"
+              title="Drawing Alerts"
+              subtitle="Get notified when your partner sends a drawing"
               rightElement={
                 <Toggle
                   value={notificationAlerts}
@@ -236,9 +241,6 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                 <MaterialIcons name="brush" size={20} color={colors.primary} />
               </View>
               <Text style={styles.brushStyleTitle}>Default Brush Style</Text>
-              <TouchableOpacity>
-                <Text style={styles.editText}>Edit</Text>
-              </TouchableOpacity>
             </View>
 
             {/* Brush Style Options */}
@@ -288,14 +290,25 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
               iconColor="#2196F3"
               iconBackgroundColor="rgba(33, 150, 243, 0.15)"
               title="Account Management"
+              subtitle="Manage your account settings"
               showChevron
               onPress={() => console.log('Account management')}
+            />
+            <SettingsItem
+              icon="privacy-tip"
+              iconColor="#FF9800"
+              iconBackgroundColor="rgba(255, 152, 0, 0.15)"
+              title="Privacy Policy"
+              subtitle="How we handle your data"
+              showChevron
+              onPress={() => Linking.openURL('https://loklok.app/privacy')}
             />
             <SettingsItem
               icon="help-outline"
               iconColor="#9E9E9E"
               iconBackgroundColor="rgba(158, 158, 158, 0.15)"
               title="Support & FAQ"
+              subtitle="Get help or report an issue"
               showChevron
               onPress={() => console.log('Support')}
             />
@@ -304,13 +317,14 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
               iconColor={colors.primary}
               iconBackgroundColor="rgba(244, 71, 37, 0.15)"
               title="Log Out"
-              onPress={() => console.log('Log out')}
+              onPress={handleLogout}
             />
           </View>
         </View>
 
         {/* Version */}
-        <Text style={styles.versionText}>Version 2.4.0 (Build 302)</Text>
+        <Text style={styles.versionText}>LokLok v1.0.0</Text>
+        <Text style={styles.copyrightText}>Made with love for couples</Text>
       </ScrollView>
     </SafeAreaView>
   );
@@ -341,6 +355,20 @@ const styles = StyleSheet.create({
     ...typography.bodySmall,
     color: colors.textTertiary,
     marginTop: spacing.xs,
+  },
+  partnerBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    backgroundColor: 'rgba(244, 71, 37, 0.1)',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    borderRadius: borderRadius.full,
+    marginTop: spacing.md,
+  },
+  partnerBadgeText: {
+    ...typography.caption,
+    color: colors.primary,
   },
   profileActions: {
     flexDirection: 'row',
@@ -388,19 +416,19 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.default,
     padding: spacing.lg,
   },
-  testButton: {
-    backgroundColor: colors.primary,
+  infoBox: {
+    flexDirection: 'row',
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
     borderRadius: borderRadius.sm,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
-    alignSelf: 'flex-start',
+    padding: spacing.md,
+    gap: spacing.sm,
     marginTop: spacing.sm,
-    marginBottom: spacing.md,
-    marginLeft: 52,
   },
-  testButtonText: {
-    ...typography.buttonSmall,
-    color: colors.white,
+  infoText: {
+    ...typography.caption,
+    color: colors.textTertiary,
+    flex: 1,
+    lineHeight: 18,
   },
   brushStyleHeader: {
     flexDirection: 'row',
@@ -420,10 +448,6 @@ const styles = StyleSheet.create({
     ...typography.body,
     color: colors.textPrimary,
     flex: 1,
-  },
-  editText: {
-    ...typography.labelSmall,
-    color: colors.primary,
   },
   brushStyleOptions: {
     flexDirection: 'row',
@@ -506,5 +530,12 @@ const styles = StyleSheet.create({
     color: colors.textTertiary,
     textAlign: 'center',
     marginTop: spacing.xl,
+  },
+  copyrightText: {
+    ...typography.caption,
+    color: colors.textTertiary,
+    textAlign: 'center',
+    marginTop: spacing.xs,
+    opacity: 0.6,
   },
 });

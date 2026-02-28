@@ -6,8 +6,8 @@ import { colors } from '../theme';
 export type BrushStyle = 'neon' | 'solid' | 'pencil';
 
 interface SettingsState {
-  // General settings
-  lockScreenOverlay: boolean;
+  // Lockscreen settings
+  autoApplyDrawings: boolean;
   notificationAlerts: boolean;
 
   // Drawing tools defaults
@@ -23,7 +23,7 @@ interface SettingsState {
   hasCompletedOnboarding: boolean;
 
   // Actions
-  setLockScreenOverlay: (value: boolean) => void;
+  setAutoApplyDrawings: (value: boolean) => void;
   setNotificationAlerts: (value: boolean) => void;
   setDefaultBrushStyle: (style: BrushStyle) => void;
   setDefaultInkColor: (color: string) => void;
@@ -36,8 +36,8 @@ export const useSettingsStore = create<SettingsState>()(
   persist(
     (set) => ({
       // Initial state
-      lockScreenOverlay: true,
-      notificationAlerts: false,
+      autoApplyDrawings: true,
+      notificationAlerts: true,
       defaultBrushStyle: 'neon',
       defaultInkColor: colors.primary,
       userName: 'Sarah Jenkins',
@@ -46,7 +46,7 @@ export const useSettingsStore = create<SettingsState>()(
       hasCompletedOnboarding: false,
 
       // Actions
-      setLockScreenOverlay: (value) => set({ lockScreenOverlay: value }),
+      setAutoApplyDrawings: (value) => set({ autoApplyDrawings: value }),
 
       setNotificationAlerts: (value) => set({ notificationAlerts: value }),
 

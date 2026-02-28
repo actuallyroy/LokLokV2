@@ -8,26 +8,16 @@ try {
   console.error('Failed to load Wallpaper native module:', error);
 }
 
-export async function hasAllFilesAccess(): Promise<boolean> {
-  if (!WallpaperNativeModule) return false;
-  try {
-    return await WallpaperNativeModule.hasAllFilesAccess();
-  } catch (error) {
-    console.error('Error checking all files access:', error);
-    return false;
-  }
+export interface ScreenDimensions {
+  width: number;
+  height: number;
+  density: number;
 }
 
-export async function requestAllFilesAccess(): Promise<boolean> {
-  if (!WallpaperNativeModule) return false;
-  try {
-    return await WallpaperNativeModule.requestAllFilesAccess();
-  } catch (error) {
-    console.error('Error requesting all files access:', error);
-    return false;
-  }
-}
-
+/**
+ * Get the current wallpaper as a file URI
+ * No special permissions required
+ */
 export async function getWallpaper(): Promise<string | null> {
   if (!WallpaperNativeModule) return null;
   try {
@@ -38,8 +28,35 @@ export async function getWallpaper(): Promise<string | null> {
   }
 }
 
+/**
+ * Set an image as the lockscreen wallpaper
+ * Requires SET_WALLPAPER permission
+ */
+export async function setLockscreenWallpaper(imagePath: string): Promise<boolean> {
+  if (!WallpaperNativeModule) return false;
+  try {
+    return await WallpaperNativeModule.setLockscreenWallpaper(imagePath);
+  } catch (error) {
+    console.error('Error setting lockscreen wallpaper:', error);
+    return false;
+  }
+}
+
+/**
+ * Get screen dimensions for proper aspect ratio matching
+ */
+export async function getScreenDimensions(): Promise<ScreenDimensions | null> {
+  if (!WallpaperNativeModule) return null;
+  try {
+    return await WallpaperNativeModule.getScreenDimensions();
+  } catch (error) {
+    console.error('Error getting screen dimensions:', error);
+    return null;
+  }
+}
+
 export default {
-  hasAllFilesAccess,
-  requestAllFilesAccess,
   getWallpaper,
+  setLockscreenWallpaper,
+  getScreenDimensions,
 };

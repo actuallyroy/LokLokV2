@@ -1,17 +1,18 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, StyleSheet } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import * as Font from 'expo-font';
 import { AppNavigator } from './src/navigation';
 import { colors } from './src/theme';
+import { initializeFirebase } from './src/services/firebase';
+import {
+  registerForPushNotifications,
+  addNotificationReceivedListener,
+  addNotificationResponseListener,
+} from './src/services/notifications';
 
-// Font assets - uncomment when font files are added to assets/fonts
-// const customFonts = {
-//   'PlusJakartaSans-Regular': require('./src/assets/fonts/PlusJakartaSans-Regular.ttf'),
-//   'PlusJakartaSans-Medium': require('./src/assets/fonts/PlusJakartaSans-Medium.ttf'),
-//   'PlusJakartaSans-SemiBold': require('./src/assets/fonts/PlusJakartaSans-SemiBold.ttf'),
-//   'PlusJakartaSans-Bold': require('./src/assets/fonts/PlusJakartaSans-Bold.ttf'),
-// };
+// Initialize Firebase
+initializeFirebase();
 
 export default function App() {
   const [fontsLoaded, setFontsLoaded] = useState(false);
@@ -19,16 +20,46 @@ export default function App() {
   useEffect(() => {
     async function loadFonts() {
       try {
-        // Uncomment when font files are available
-        // await Font.loadAsync(customFonts);
         setFontsLoaded(true);
       } catch (error) {
         console.warn('Error loading fonts:', error);
-        setFontsLoaded(true); // Continue without custom fonts
+        setFontsLoaded(true);
       }
     }
 
     loadFonts();
+  }, []);
+
+  // Set up push notifications
+  useEffect(() => {
+    // Register for push notifications
+    registerForPushNotifications().then((token) => {
+      if (token) {
+        console.log('Push token:', token);
+        // TODO: Store this token for pairing
+      }
+    });
+
+    // Handle notifications received while app is open
+    const notificationListener = addNotificationReceivedListener((notification) => {
+      console.log('Notification received:', notification);
+      // Handle the notification (e.g., show a toast, update UI)
+    });
+
+    // Handle notification taps
+    const responseListener = addNotificationResponseListener((response) => {
+      console.log('Notification tapped:', response);
+      const data = response.notification.request.content.data;
+      if (data?.type === 'new_drawing') {
+        // Navigate to canvas or show the drawing
+        console.log('New drawing received from partner');
+      }
+    });
+
+    return () => {
+      notificationListener.remove();
+      responseListener.remove();
+    };
   }, []);
 
   if (!fontsLoaded) {

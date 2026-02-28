@@ -25,16 +25,25 @@
         "backgroundColor": "#221310"
       },
       "package": "com.loklok.app",
+      "googleServicesFile": "./google-services.json",
       "permissions": [
-        "android.permission.READ_EXTERNAL_STORAGE",
-        "android.permission.MANAGE_EXTERNAL_STORAGE"
+        "android.permission.SET_WALLPAPER",
+        "android.permission.CAMERA",
+        "android.permission.READ_MEDIA_IMAGES"
       ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "expo-barcode-scanner"
+      "expo-barcode-scanner",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#f44725"
+        }
+      ]
     ]
   }
 }

@@ -7,17 +7,16 @@ import {
   Dimensions,
   TouchableOpacity,
   Image,
-  Modal,
-  Animated,
-  AppState,
-  AppStateStatus,
+  Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
-import { hasAllFilesAccess, requestAllFilesAccess, getWallpaper } from '../../modules/wallpaper';
+import * as ImagePicker from 'expo-image-picker';
+import { getWallpaper, setLockscreenWallpaper } from '../../modules/wallpaper';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { captureRef } from 'react-native-view-shot';
 import { Header } from '../components/common';
 import {
   DrawingCanvas,
@@ -29,7 +28,10 @@ import {
 } from '../components/canvas';
 import { colors, typography, spacing, borderRadius } from '../theme';
 import { RootStackParamList } from '../navigation/AppNavigator';
-import { useCanvasStore, usePairingStore } from '../store';
+import { useCanvasStore, usePairingStore, useSettingsStore } from '../store';
+import { sendDrawingToPartner, getPartnerFcmToken } from '../services/strokeSync';
+import { sendPushToPartner } from '../services/notifications';
+import { saveBackgroundImageUri } from '../services/backgroundTask';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -47,83 +49,45 @@ export const SharedCanvasScreen: React.FC<SharedCanvasScreenProps> = ({
 }) => {
   const insets = useSafeAreaInsets();
   const [wallpaperUri, setWallpaperUri] = useState<string | null>(null);
-  const [showPermissionModal, setShowPermissionModal] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isSending, setIsSending] = useState(false);
+  const canvasRef = useRef<View>(null);
+
+  const { userName } = useSettingsStore();
 
   // Use device screen aspect ratio (how lockscreen actually appears)
   const screenAspectRatio = SCREEN_WIDTH / SCREEN_HEIGHT;
-  const [fadeAnim] = useState(new Animated.Value(0));
-  const appState = useRef(AppState.currentState);
-  const hasRequestedPermission = useRef(false);
-
-  const showModal = () => {
-    setShowPermissionModal(true);
-    Animated.timing(fadeAnim, {
-      toValue: 1,
-      duration: 300,
-      useNativeDriver: true,
-    }).start();
-  };
-
-  const hideModal = () => {
-    Animated.timing(fadeAnim, {
-      toValue: 0,
-      duration: 200,
-      useNativeDriver: true,
-    }).start(() => {
-      setShowPermissionModal(false);
-    });
-  };
-
-  const handleGrantPermission = async () => {
-    hideModal();
-    hasRequestedPermission.current = true;
-    await requestAllFilesAccess();
-  };
-
-  const loadWallpaper = useCallback(async () => {
-    // Check if we have permission
-    const hasAccess = await hasAllFilesAccess();
-
-    if (!hasAccess) {
-      // Show custom permission modal (only if we haven't already requested)
-      if (!hasRequestedPermission.current) {
-        showModal();
-      }
-      return;
-    }
-
-    // Get wallpaper
-    const uri = await getWallpaper();
-    if (uri) {
-      setWallpaperUri(uri);
-    }
-  }, []);
 
   // Load wallpaper on mount
   useEffect(() => {
-    loadWallpaper();
-  }, [loadWallpaper]);
-
-  // Re-check permission when app comes back to foreground
-  useEffect(() => {
-    const handleAppStateChange = (nextAppState: AppStateStatus) => {
-      if (
-        appState.current.match(/inactive|background/) &&
-        nextAppState === 'active' &&
-        hasRequestedPermission.current
-      ) {
-        // User returned from settings, check if permission was granted
-        loadWallpaper();
+    const loadWallpaper = async () => {
+      // Try to get wallpaper automatically (may fail on Android 13+)
+      const uri = await getWallpaper();
+      if (uri) {
+        setWallpaperUri(uri);
       }
-      appState.current = nextAppState;
+      // If null, user can select manually via the button
     };
+    loadWallpaper();
+  }, []);
 
-    const subscription = AppState.addEventListener('change', handleAppStateChange);
+  // Pick wallpaper from gallery
+  const pickWallpaperFromGallery = async () => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: false,
+        quality: 1,
+      });
 
-    return () => {
-      subscription.remove();
-    };
-  }, [loadWallpaper]);
+      if (!result.canceled && result.assets[0]) {
+        setWallpaperUri(result.assets[0].uri);
+      }
+    } catch (error) {
+      console.error('Error picking image:', error);
+      Alert.alert('Error', 'Failed to pick image from gallery');
+    }
+  };
 
   const {
     strokes,
@@ -138,7 +102,7 @@ export const SharedCanvasScreen: React.FC<SharedCanvasScreenProps> = ({
     clearCanvas,
   } = useCanvasStore();
 
-  const { isPartnerDrawing } = usePairingStore();
+  const { isPartnerDrawing, isPaired, pairingId, partnerName } = usePairingStore();
 
   const handleStrokesChange = useCallback(
     (newStrokes: Stroke[]) => {
@@ -158,93 +122,123 @@ export const SharedCanvasScreen: React.FC<SharedCanvasScreenProps> = ({
     [setSelectedTool, clearCanvas]
   );
 
-  const handleDone = useCallback(() => {
-    console.log('Canvas saved');
-    navigation.goBack();
-  }, [navigation]);
+  const handleDone = useCallback(async () => {
+    if (strokes.length === 0) {
+      navigation.goBack();
+      return;
+    }
 
-  const handleSave = useCallback(() => {
-    console.log('Saving canvas...');
-  }, []);
+    // Build options based on pairing status
+    const options: any[] = [
+      {
+        text: 'Discard',
+        style: 'destructive',
+        onPress: () => navigation.goBack(),
+      },
+      {
+        text: 'Save to My Lockscreen',
+        onPress: () => saveToLockscreen(),
+      },
+    ];
+
+    // Add send to partner option if paired
+    if (isPaired && pairingId) {
+      options.push({
+        text: `Send to ${partnerName || 'Partner'}`,
+        onPress: () => sendToPartner(),
+      });
+    }
+
+    Alert.alert(
+      'Save Drawing',
+      isPaired
+        ? 'What would you like to do with your drawing?'
+        : 'Would you like to set this as your lockscreen?',
+      options
+    );
+  }, [strokes, navigation, isPaired, pairingId, partnerName]);
+
+  const sendToPartner = async () => {
+    if (!pairingId) {
+      Alert.alert('Error', 'No partner connected');
+      return;
+    }
+
+    setIsSending(true);
+    try {
+      // Send strokes to Firestore
+      const success = await sendDrawingToPartner(
+        pairingId,
+        strokes,
+        'device-id', // TODO: Get actual device ID
+        userName,
+        SCREEN_WIDTH,
+        SCREEN_HEIGHT
+      );
+
+      if (!success) {
+        throw new Error('Failed to send drawing');
+      }
+
+      // Get partner's FCM token and send push notification
+      const partnerToken = await getPartnerFcmToken(pairingId);
+      if (partnerToken) {
+        await sendPushToPartner(partnerToken, userName, pairingId);
+      }
+
+      // Save background image URI for when partner sends back
+      if (wallpaperUri) {
+        await saveBackgroundImageUri(wallpaperUri);
+      }
+
+      Alert.alert(
+        'Sent!',
+        `Your drawing has been sent to ${partnerName || 'your partner'}. They'll see it on their lockscreen!`,
+        [{ text: 'OK', onPress: () => navigation.goBack() }]
+      );
+    } catch (error) {
+      console.error('Error sending to partner:', error);
+      Alert.alert('Error', 'Failed to send drawing. Please try again.');
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  const saveToLockscreen = async () => {
+    if (!canvasRef.current) return;
+
+    setIsSaving(true);
+    try {
+      // Capture the canvas with wallpaper + drawing
+      const uri = await captureRef(canvasRef, {
+        format: 'png',
+        quality: 1,
+        result: 'tmpfile',
+      });
+
+      // Set as lockscreen wallpaper
+      const success = await setLockscreenWallpaper(uri);
+
+      if (success) {
+        Alert.alert(
+          'Success!',
+          'Your drawing has been set as your lockscreen wallpaper.',
+          [{ text: 'OK', onPress: () => navigation.goBack() }]
+        );
+      } else {
+        Alert.alert('Error', 'Failed to set lockscreen wallpaper. Please try again.');
+      }
+    } catch (error) {
+      console.error('Error saving to lockscreen:', error);
+      Alert.alert('Error', 'Something went wrong. Please try again.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   return (
     <GestureHandlerRootView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor={colors.backgroundDark} />
-
-      {/* Permission Request Modal */}
-      <Modal
-        visible={showPermissionModal}
-        transparent
-        animationType="none"
-        onRequestClose={hideModal}
-      >
-        <Animated.View style={[styles.modalOverlay, { opacity: fadeAnim }]}>
-          <Animated.View
-            style={[
-              styles.modalContent,
-              {
-                transform: [
-                  {
-                    scale: fadeAnim.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: [0.9, 1],
-                    }),
-                  },
-                ],
-              },
-            ]}
-          >
-            {/* Icon Header */}
-            <View style={styles.modalIconContainer}>
-              <LinearGradient
-                colors={[colors.primary, '#ff8a65']}
-                style={styles.modalIconGradient}
-              >
-                <MaterialIcons name="wallpaper" size={32} color={colors.white} />
-              </LinearGradient>
-            </View>
-
-            {/* Title */}
-            <Text style={styles.modalTitle}>Show Your Wallpaper</Text>
-
-            {/* Description */}
-            <Text style={styles.modalDescription}>
-              To display your lockscreen wallpaper as the canvas background, LokLok needs access to your files.
-            </Text>
-
-            {/* Privacy Notice */}
-            <View style={styles.privacyNotice}>
-              <MaterialIcons name="security" size={20} color={colors.success} />
-              <Text style={styles.privacyText}>
-                We only use this permission to read your wallpaper. Your files stay private and are never uploaded.
-              </Text>
-            </View>
-
-            {/* Buttons */}
-            <View style={styles.modalButtons}>
-              <TouchableOpacity
-                style={styles.modalButtonSecondary}
-                onPress={hideModal}
-              >
-                <Text style={styles.modalButtonSecondaryText}>Maybe Later</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.modalButtonPrimary}
-                onPress={handleGrantPermission}
-              >
-                <LinearGradient
-                  colors={[colors.primary, '#ff6b3d']}
-                  style={styles.modalButtonGradient}
-                >
-                  <MaterialIcons name="settings" size={18} color={colors.white} />
-                  <Text style={styles.modalButtonPrimaryText}>Open Settings</Text>
-                </LinearGradient>
-              </TouchableOpacity>
-            </View>
-          </Animated.View>
-        </Animated.View>
-      </Modal>
 
       {/* Header */}
       <View style={{ paddingTop: insets.top }}>
@@ -262,36 +256,47 @@ export const SharedCanvasScreen: React.FC<SharedCanvasScreenProps> = ({
         />
       </View>
 
-        {/* Partner Status */}
-        {isPartnerDrawing && (
-          <View style={styles.partnerStatus}>
-            <View style={styles.partnerDot} />
-            <Text style={styles.partnerText}>Partner is drawing...</Text>
-          </View>
-        )}
+      {/* Partner Status */}
+      {isPartnerDrawing && (
+        <View style={styles.partnerStatus}>
+          <View style={styles.partnerDot} />
+          <Text style={styles.partnerText}>Partner is drawing...</Text>
+        </View>
+      )}
 
-        {/* Canvas Area */}
-        <View style={styles.canvasWrapper}>
-          <View
-            style={[
-              styles.canvasContainer,
-              {
-                aspectRatio: screenAspectRatio,
-                flex: undefined,
-                maxHeight: '100%',
-              },
-            ]}
-          >
-            {/* Wallpaper Background */}
-            {wallpaperUri && (
-              <Image
-                source={{ uri: wallpaperUri }}
-                style={styles.wallpaperBackground}
-                resizeMode="cover"
-              />
-            )}
+      {/* Canvas Area */}
+      <View style={styles.canvasWrapper}>
+        <View
+          ref={canvasRef}
+          style={[
+            styles.canvasContainer,
+            {
+              aspectRatio: screenAspectRatio,
+              flex: undefined,
+              maxHeight: '100%',
+            },
+          ]}
+          collapsable={false}
+        >
+          {/* Wallpaper Background */}
+          {wallpaperUri ? (
+            <Image
+              source={{ uri: wallpaperUri }}
+              style={styles.wallpaperBackground}
+              resizeMode="cover"
+            />
+          ) : (
+            <TouchableOpacity
+              style={styles.selectBackgroundButton}
+              onPress={pickWallpaperFromGallery}
+            >
+              <MaterialIcons name="add-photo-alternate" size={48} color={colors.textSecondary} />
+              <Text style={styles.selectBackgroundText}>Tap to select your lockscreen image</Text>
+            </TouchableOpacity>
+          )}
 
-            {/* Drawing Canvas */}
+          {/* Drawing Canvas - only active when wallpaper is selected */}
+          {wallpaperUri && (
             <View style={styles.drawingLayer}>
               <DrawingCanvas
                 strokes={strokes}
@@ -301,36 +306,47 @@ export const SharedCanvasScreen: React.FC<SharedCanvasScreenProps> = ({
                 isEraser={selectedTool === 'eraser'}
               />
             </View>
-          </View>
+          )}
         </View>
 
-        {/* Bottom Glass Panel */}
-        <View style={[styles.bottomPanel, { paddingBottom: insets.bottom + spacing.sm }]}>
-          {/* Brush Size Slider */}
-          <BrushSizeSlider
-            value={brushSize}
-            onValueChange={setBrushSize}
-            minValue={1}
-            maxValue={50}
-          />
-
-          {/* Color Picker */}
-          <View style={styles.colorPickerContainer}>
-            <ColorPicker
-              selectedColor={currentColor}
-              onColorSelect={setCurrentColor}
-            />
+        {/* Saving/Sending Overlay - outside canvas ref so it's not captured */}
+        {(isSaving || isSending) && (
+          <View style={styles.savingOverlay}>
+            <ActivityIndicator size="large" color={colors.primary} />
+            <Text style={styles.savingText}>
+              {isSending ? 'Sending to partner...' : 'Saving...'}
+            </Text>
           </View>
+        )}
+      </View>
 
-          {/* Tool Bar */}
-          <ToolBar
-            selectedTool={selectedTool}
-            onToolSelect={handleToolSelect}
-            onUndo={undoLastStroke}
-            onDone={handleDone}
-            canUndo={strokes.length > 0}
+      {/* Bottom Glass Panel */}
+      <View style={[styles.bottomPanel, { paddingBottom: insets.bottom + spacing.sm }]}>
+        {/* Brush Size Slider */}
+        <BrushSizeSlider
+          value={brushSize}
+          onValueChange={setBrushSize}
+          minValue={1}
+          maxValue={50}
+        />
+
+        {/* Color Picker */}
+        <View style={styles.colorPickerContainer}>
+          <ColorPicker
+            selectedColor={currentColor}
+            onColorSelect={setCurrentColor}
           />
         </View>
+
+        {/* Tool Bar */}
+        <ToolBar
+          selectedTool={selectedTool}
+          onToolSelect={handleToolSelect}
+          onUndo={undoLastStroke}
+          onDone={handleDone}
+          canUndo={strokes.length > 0}
+        />
+      </View>
     </GestureHandlerRootView>
   );
 };
@@ -377,8 +393,31 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
+  selectBackgroundButton: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  selectBackgroundText: {
+    ...typography.body,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    paddingHorizontal: spacing.xl,
+  },
   drawingLayer: {
     ...StyleSheet.absoluteFillObject,
+  },
+  savingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  savingText: {
+    ...typography.h3,
+    color: colors.white,
   },
   bottomPanel: {
     backgroundColor: colors.glassBackground,
@@ -390,100 +429,5 @@ const styles = StyleSheet.create({
   },
   colorPickerContainer: {
     paddingVertical: spacing.xs,
-  },
-  // Modal Styles
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: spacing.xl,
-  },
-  modalContent: {
-    backgroundColor: colors.cardDark,
-    borderRadius: borderRadius.xl,
-    padding: spacing.xxl,
-    width: '100%',
-    maxWidth: 340,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
-  },
-  modalIconContainer: {
-    marginBottom: spacing.lg,
-  },
-  modalIconGradient: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
-  },
-  modalTitle: {
-    ...typography.h2,
-    color: colors.textPrimary,
-    marginBottom: spacing.md,
-    textAlign: 'center',
-  },
-  modalDescription: {
-    ...typography.body,
-    color: colors.textSecondary,
-    textAlign: 'center',
-    marginBottom: spacing.lg,
-    lineHeight: 22,
-  },
-  privacyNotice: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    backgroundColor: 'rgba(76, 175, 80, 0.1)',
-    borderRadius: borderRadius.default,
-    padding: spacing.md,
-    marginBottom: spacing.xl,
-    gap: spacing.sm,
-  },
-  privacyText: {
-    ...typography.caption,
-    color: colors.textSecondary,
-    flex: 1,
-    lineHeight: 18,
-  },
-  modalButtons: {
-    flexDirection: 'row',
-    gap: spacing.md,
-    width: '100%',
-  },
-  modalButtonSecondary: {
-    flex: 1,
-    paddingVertical: spacing.md,
-    borderRadius: borderRadius.full,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  modalButtonSecondaryText: {
-    ...typography.button,
-    color: colors.textSecondary,
-  },
-  modalButtonPrimary: {
-    flex: 1,
-    borderRadius: borderRadius.full,
-    overflow: 'hidden',
-  },
-  modalButtonGradient: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: spacing.md,
-    gap: spacing.xs,
-  },
-  modalButtonPrimaryText: {
-    ...typography.button,
-    color: colors.white,
   },
 });
