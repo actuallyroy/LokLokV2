@@ -62,12 +62,22 @@ jobs:
       - name: Create google-services.json
         run: echo '${{ secrets.GOOGLE_SERVICES_JSON }}' > google-services.json
 
+      - name: Generate Android project
+        run: npx expo prebuild --platform android --clean
+
       - name: Set up signing keystore
-        if: ${{ env.KEYSTORE_BASE64 != '' }}
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
         run: |
-          echo "$KEYSTORE_BASE64" | base64 -d > android/app/release.keystore
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > android/app/release.keystore
+            echo "Release keystore configured"
+          else
+            echo "No keystore configured, using debug signing"
+          fi
+
+      - name: Update build.gradle for release signing
+        run: node scripts/patch-signing.js
 
       - name: Make gradlew executable
         run: chmod +x android/gradlew
