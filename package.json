@@ -10,7 +10,9 @@
     "release": "node scripts/release.js patch",
     "release:patch": "node scripts/release.js patch",
     "release:minor": "node scripts/release.js minor",
-    "release:major": "node scripts/release.js major"
+    "release:major": "node scripts/release.js major",
+    "install-all": "node scripts/install-all.js",
+    "install-all:quick": "node scripts/install-all.js --skip-build"
   },
   "dependencies": {
     "@expo/vector-icons": "~14.0.4",

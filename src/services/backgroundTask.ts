@@ -2,7 +2,7 @@ import * as TaskManager from 'expo-task-manager';
 import * as Notifications from 'expo-notifications';
 import * as FileSystem from 'expo-file-system';
 import { getLatestDrawing, DrawingData } from './strokeSync';
-import { getWallpaper, setLockscreenWallpaper } from '../../modules/wallpaper';
+import { getWallpaper, setLockscreenWallpaper, compositeAndSetLockscreen } from '../../modules/wallpaper';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const BACKGROUND_NOTIFICATION_TASK = 'BACKGROUND_NOTIFICATION_TASK';
@@ -13,6 +13,7 @@ const STORAGE_KEYS = {
   PAIRING_ID: 'loklok_pairing_id',
   DEVICE_ID: 'loklok_device_id',
   BACKGROUND_IMAGE_URI: 'loklok_background_image_uri',
+  LAST_APPLIED_DRAWING_TIME: 'loklok_last_applied_drawing_time',
 };
 
 /**
@@ -53,9 +54,10 @@ export async function registerBackgroundNotificationHandler(): Promise<void> {
 
 /**
  * Apply received drawing to lockscreen
- * Uses the pre-rendered image if available, otherwise falls back to compositing
+ * Uses native compositing to draw strokes on local background image
+ * Tracks last applied drawing to avoid re-applying the same drawing
  */
-export async function applyReceivedDrawing(pairingId: string): Promise<boolean> {
+export async function applyReceivedDrawing(pairingId: string, forceApply: boolean = false): Promise<boolean> {
   try {
     console.log('Applying received drawing for pairing:', pairingId);
 
@@ -73,28 +75,60 @@ export async function applyReceivedDrawing(pairingId: string): Promise<boolean> 
       return false;
     }
 
-    // If we have a pre-rendered image, use it directly
-    if (drawingData.imageBase64) {
-      console.log('Using pre-rendered image from partner');
-      try {
-        // Save base64 to a temp file
-        const tempPath = `${FileSystem.cacheDirectory}partner_drawing_${Date.now()}.jpg`;
-        await FileSystem.writeAsStringAsync(tempPath, drawingData.imageBase64, {
-          encoding: FileSystem.EncodingType.Base64,
-        });
-
-        // Set as lockscreen
-        const success = await setLockscreenWallpaper(tempPath);
-        if (success) {
-          console.log('Drawing applied to lockscreen successfully');
-          return true;
+    // Check if this drawing was already applied (unless forced)
+    if (!forceApply) {
+      const lastAppliedTime = await AsyncStorage.getItem(STORAGE_KEYS.LAST_APPLIED_DRAWING_TIME);
+      // Handle Firestore timestamp - it might be an object with seconds/nanoseconds
+      let drawingTime = 0;
+      if (drawingData.timestamp) {
+        if (typeof drawingData.timestamp.toMillis === 'function') {
+          drawingTime = drawingData.timestamp.toMillis();
+        } else if ((drawingData.timestamp as any).seconds) {
+          drawingTime = (drawingData.timestamp as any).seconds * 1000;
         }
-      } catch (imageError) {
-        console.error('Error applying image:', imageError);
+      }
+
+      console.log('Timestamp check:', { lastAppliedTime, drawingTime, forceApply });
+
+      if (lastAppliedTime && drawingTime > 0 && parseInt(lastAppliedTime) >= drawingTime) {
+        console.log('Drawing already applied, skipping');
+        return false;
       }
     }
 
-    console.log('No pre-rendered image available');
+    // Get my local background image
+    const backgroundUri = await getBackgroundImageUri();
+    if (!backgroundUri) {
+      console.log('No background image saved locally');
+      return false;
+    }
+
+    // Check if we have strokes to draw
+    if (!drawingData.strokes || drawingData.strokes.length === 0) {
+      console.log('No strokes in drawing data');
+      return false;
+    }
+
+    console.log(`Compositing ${drawingData.strokes.length} strokes onto local background`);
+
+    // Use native compositing to draw strokes on background and set lockscreen
+    const success = await compositeAndSetLockscreen(
+      backgroundUri,
+      drawingData.strokes,
+      drawingData.canvasWidth,
+      drawingData.canvasHeight
+    );
+
+    if (success) {
+      // Save the timestamp of this drawing so we don't re-apply it
+      const drawingTime = drawingData.timestamp?.toMillis?.() || Date.now();
+      await AsyncStorage.setItem(STORAGE_KEYS.LAST_APPLIED_DRAWING_TIME, drawingTime.toString());
+
+      console.log('Drawing applied to lockscreen successfully via native compositing');
+      return true;
+    }
+
+    console.log('Failed to apply drawing via native compositing');
     return false;
   } catch (error) {
     console.error('Error applying received drawing:', error);

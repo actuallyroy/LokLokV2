@@ -34,9 +34,6 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-
       - name: Cache node_modules
         uses: actions/cache@v4
         id: node-modules-cache
@@ -56,17 +53,6 @@ jobs:
           key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
           restore-keys: |
             ${{ runner.os }}-gradle-
-
-      - name: Cache Android SDK
-        uses: actions/cache@v4
-        with:
-          path: |
-            ${{ env.ANDROID_HOME }}/platforms
-            ${{ env.ANDROID_HOME }}/build-tools
-            ${{ env.ANDROID_HOME }}/platform-tools
-          key: ${{ runner.os }}-android-sdk-34
-          restore-keys: |
-            ${{ runner.os }}-android-sdk-
 
       - name: Install dependencies
         run: yarn install

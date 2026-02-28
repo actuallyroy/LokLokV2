@@ -34,6 +34,11 @@ import { sendPushToPartner } from '../services/notifications';
 import { saveBackgroundImageUri, getBackgroundImageUri, getDeviceId, applyReceivedDrawing } from '../services/backgroundTask';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+const { width: PIXEL_WIDTH, height: PIXEL_HEIGHT } = Dimensions.get('screen');
+
+// Get actual pixel dimensions for high-quality capture
+const CAPTURE_WIDTH = Math.round(PIXEL_WIDTH);
+const CAPTURE_HEIGHT = Math.round(PIXEL_HEIGHT);
 
 type SharedCanvasScreenNavigationProp = NativeStackNavigationProp<
   RootStackParamList,
@@ -93,6 +98,8 @@ export const SharedCanvasScreen: React.FC<SharedCanvasScreenProps> = ({
             format: 'png',
             quality: 1,
             result: 'tmpfile',
+            width: CAPTURE_WIDTH,
+            height: CAPTURE_HEIGHT,
           });
           const success = await setLockscreenWallpaper(uri);
           if (success) {
@@ -117,50 +124,49 @@ export const SharedCanvasScreen: React.FC<SharedCanvasScreenProps> = ({
       myDeviceId = await getDeviceId();
 
       const unsubscribe = subscribeToDrawings(pairingId, async (drawing) => {
-        // Only load if it's from partner, not from me
-        if (drawing.senderId !== myDeviceId && (drawing.strokes.length > 0 || drawing.imageBase64)) {
-          console.log('Received drawing from partner:', drawing.strokes.length, 'strokes', drawing.imageBase64 ? 'with image' : 'no image');
-          setStrokes(drawing.strokes);
+        try {
+          console.log('Subscription callback fired, senderId:', drawing.senderId, 'myDeviceId:', myDeviceId);
 
-          // Auto-apply if setting is enabled
-          if (autoApplyDrawings) {
-            // If we have a pre-rendered image, use it directly (faster & works in background)
-            if (drawing.imageBase64) {
-              const success = await applyReceivedDrawing(pairingId);
+          // Only load if it's from partner, not from me
+          if (drawing.senderId !== myDeviceId && drawing.strokes.length > 0) {
+            console.log('Received drawing from partner:', drawing.strokes.length, 'strokes');
+            setStrokes(drawing.strokes);
+
+            // Auto-apply if setting is enabled
+            if (autoApplyDrawings) {
+              // Use native compositing to apply drawing to lockscreen (force apply since this is a real-time update)
+              const success = await applyReceivedDrawing(pairingId, true);
+              console.log('Apply result:', success);
               Alert.alert(
                 'New Drawing!',
                 success
                   ? `${drawing.senderName} sent you a drawing! Applied to lockscreen.`
-                  : `${drawing.senderName} sent you a drawing! (Could not apply to lockscreen)`
+                  : `${drawing.senderName} sent you a drawing! (Could not apply - make sure you have a background image selected)`
               );
             } else {
-              // Fall back to canvas capture
-              setPendingLockscreenApply(true);
+              // Show alert with option to apply to lockscreen
               Alert.alert(
                 'New Drawing!',
-                `${drawing.senderName} sent you a drawing! Applying to lockscreen...`
+                `${drawing.senderName} sent you a drawing!`,
+                [
+                  { text: 'View Only', style: 'cancel' },
+                  {
+                    text: 'Apply to Lockscreen',
+                    onPress: async () => {
+                      const success = await applyReceivedDrawing(pairingId, true);
+                      if (!success) {
+                        Alert.alert('Error', 'Could not apply to lockscreen. Make sure you have a background image selected.');
+                      }
+                    },
+                  },
+                ]
               );
             }
           } else {
-            // Show alert with option to apply to lockscreen
-            Alert.alert(
-              'New Drawing!',
-              `${drawing.senderName} sent you a drawing!`,
-              [
-                { text: 'View Only', style: 'cancel' },
-                {
-                  text: 'Apply to Lockscreen',
-                  onPress: async () => {
-                    if (drawing.imageBase64) {
-                      await applyReceivedDrawing(pairingId);
-                    } else {
-                      setPendingLockscreenApply(true);
-                    }
-                  },
-                },
-              ]
-            );
+            console.log('Skipping drawing - either own drawing or no strokes');
           }
+        } catch (error) {
+          console.error('Error in subscription callback:', error);
         }
       });
 
@@ -278,28 +284,14 @@ export const SharedCanvasScreen: React.FC<SharedCanvasScreenProps> = ({
       // Get my device ID
       const myDeviceId = await getDeviceId() || 'unknown';
 
-      // Capture canvas as base64 for background updates
-      let imageBase64: string | undefined;
-      try {
-        const uri = await captureRef(canvasRef, {
-          format: 'jpg',
-          quality: 0.7, // Compress to stay under Firestore limits
-          result: 'base64',
-        });
-        imageBase64 = uri;
-      } catch (captureError) {
-        console.warn('Could not capture canvas image:', captureError);
-      }
-
-      // Send strokes and image to Firestore
+      // Send strokes to Firestore (no image needed - receiver composites locally)
       const success = await sendDrawingToPartner(
         pairingId,
         strokes,
         myDeviceId,
         userName,
         SCREEN_WIDTH,
-        SCREEN_HEIGHT,
-        imageBase64
+        SCREEN_HEIGHT
       );
 
       if (!success) {
@@ -340,12 +332,15 @@ export const SharedCanvasScreen: React.FC<SharedCanvasScreenProps> = ({
 
     setIsSaving(true);
     try {
-      // Capture the canvas with wallpaper + drawing
+      // Capture the canvas with wallpaper + drawing at full resolution
       const uri = await captureRef(canvasRef, {
         format: 'png',
         quality: 1,
         result: 'tmpfile',
+        width: CAPTURE_WIDTH,
+        height: CAPTURE_HEIGHT,
       });
+      console.log('Saved lockscreen at', CAPTURE_WIDTH, 'x', CAPTURE_HEIGHT);
 
       // Set as lockscreen wallpaper
       const success = await setLockscreenWallpaper(uri);

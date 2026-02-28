@@ -14,6 +14,14 @@ export interface ScreenDimensions {
   density: number;
 }
 
+// StrokeData matches the app's Stroke interface from DrawingCanvas
+export interface StrokeData {
+  id: string;
+  path: string;  // SVG path string like "M 10 20 L 30 40"
+  color: string;
+  strokeWidth: number;
+}
+
 /**
  * Get the current wallpaper as a file URI
  * No special permissions required
@@ -55,8 +63,33 @@ export async function getScreenDimensions(): Promise<ScreenDimensions | null> {
   }
 }
 
+/**
+ * Composite strokes onto a background image and set as lockscreen
+ * This is used for background drawing updates - renders strokes natively
+ */
+export async function compositeAndSetLockscreen(
+  backgroundPath: string,
+  strokes: StrokeData[],
+  originalWidth: number,
+  originalHeight: number
+): Promise<boolean> {
+  if (!WallpaperNativeModule) return false;
+  try {
+    return await WallpaperNativeModule.compositeAndSetLockscreen(
+      backgroundPath,
+      strokes,
+      originalWidth,
+      originalHeight
+    );
+  } catch (error) {
+    console.error('Error compositing and setting lockscreen:', error);
+    return false;
+  }
+}
+
 export default {
   getWallpaper,
   setLockscreenWallpaper,
   getScreenDimensions,
+  compositeAndSetLockscreen,
 };

@@ -17,7 +17,6 @@ export interface DrawingData {
   timestamp: Timestamp | null;
   canvasWidth: number;
   canvasHeight: number;
-  imageBase64?: string; // Captured canvas image for background updates
 }
 
 export interface PairingData {
@@ -30,6 +29,7 @@ export interface PairingData {
 /**
  * Send drawing strokes to partner
  * Stores in Firestore under the pairing document
+ * Note: Only strokes are sent - receiver composites locally using their own background
  */
 export async function sendDrawingToPartner(
   pairingId: string,
@@ -37,11 +37,10 @@ export async function sendDrawingToPartner(
   senderId: string,
   senderName: string,
   canvasWidth: number,
-  canvasHeight: number,
-  imageBase64?: string
+  canvasHeight: number
 ): Promise<boolean> {
   try {
-    console.log('Sending drawing to partner...', { pairingId, strokeCount: strokes.length, hasImage: !!imageBase64 });
+    console.log('Sending drawing to partner...', { pairingId, strokeCount: strokes.length });
 
     if (!pairingId) {
       console.error('No pairingId provided');
@@ -58,7 +57,6 @@ export async function sendDrawingToPartner(
       timestamp: serverTimestamp() as Timestamp,
       canvasWidth,
       canvasHeight,
-      imageBase64,
     };
 
     await setDoc(drawingRef, drawingData);
@@ -97,15 +95,24 @@ export function subscribeToDrawings(
   pairingId: string,
   onDrawingReceived: (drawing: DrawingData) => void
 ): () => void {
+  console.log('Setting up Firestore subscription for:', pairingId);
   const db = getFirestoreDb();
   const drawingRef = doc(db, 'drawings', pairingId);
 
-  const unsubscribe = onSnapshot(drawingRef, (snapshot) => {
-    if (snapshot.exists()) {
-      const drawing = snapshot.data() as DrawingData;
-      onDrawingReceived(drawing);
+  const unsubscribe = onSnapshot(
+    drawingRef,
+    (snapshot) => {
+      console.log('Firestore snapshot received, exists:', snapshot.exists());
+      if (snapshot.exists()) {
+        const drawing = snapshot.data() as DrawingData;
+        console.log('Drawing data:', drawing.strokes?.length, 'strokes, sender:', drawing.senderId);
+        onDrawingReceived(drawing);
+      }
+    },
+    (error) => {
+      console.error('Firestore subscription error:', error);
     }
-  });
+  );
 
   return unsubscribe;
 }
