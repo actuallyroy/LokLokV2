@@ -93,7 +93,10 @@ export const PairDeviceScreen: React.FC<PairDeviceScreenProps> = ({
 
   const handleSkip = () => {
     setOnboardingComplete();
-    navigation.navigate('SharedCanvas');
+    navigation.reset({
+      index: 0,
+      routes: [{ name: 'SharedCanvas' }],
+    });
   };
 
   const handleShareQR = async () => {

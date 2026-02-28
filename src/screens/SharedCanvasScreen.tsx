@@ -67,6 +67,21 @@ export const SharedCanvasScreen: React.FC<SharedCanvasScreenProps> = ({
   const [dontShowAgain, setDontShowAgain] = useState(false);
   const [pendingAction, setPendingAction] = useState<'send' | 'save' | null>(null);
 
+  // Toast notification state
+  const [showToast, setShowToast] = useState(false);
+  const [toastMessage, setToastMessage] = useState('');
+
+  const showToastNotification = useCallback((message: string) => {
+    setToastMessage(message);
+    setShowToast(true);
+    setTimeout(() => {
+      setShowToast(false);
+      if (navigation.canGoBack()) {
+        navigation.goBack();
+      }
+    }, 2000);
+  }, [navigation]);
+
   // Use device screen aspect ratio (how lockscreen actually appears)
   const screenAspectRatio = SCREEN_WIDTH / SCREEN_HEIGHT;
 
@@ -321,11 +336,7 @@ export const SharedCanvasScreen: React.FC<SharedCanvasScreenProps> = ({
         await saveBackgroundImageUri(wallpaperUri);
       }
 
-      Alert.alert(
-        'Sent!',
-        `Your drawing has been sent to ${partnerName || 'your partner'}. They'll see it on their lockscreen!`,
-        [{ text: 'OK', onPress: () => navigation.goBack() }]
-      );
+      showToastNotification(`Sent to ${partnerName || 'your partner'}!`);
     } catch (error) {
       console.error('Error sending to partner:', error);
       Alert.alert('Error', 'Failed to send drawing. Please try again.');
@@ -414,6 +425,14 @@ export const SharedCanvasScreen: React.FC<SharedCanvasScreenProps> = ({
           </View>
         </View>
       </Modal>
+
+      {/* Toast Notification */}
+      {showToast && (
+        <View style={[styles.toast, { top: insets.top + spacing.md }]}>
+          <MaterialIcons name="check-circle" size={24} color={colors.white} />
+          <Text style={styles.toastText}>{toastMessage}</Text>
+        </View>
+      )}
 
       {/* Header */}
       <View style={{ paddingTop: insets.top }}>
@@ -704,5 +723,29 @@ const styles = StyleSheet.create({
   modalButtonConfirmText: {
     ...typography.buttonText,
     color: colors.white,
+  },
+  // Toast styles
+  toast: {
+    position: 'absolute',
+    left: spacing.lg,
+    right: spacing.lg,
+    backgroundColor: colors.primary,
+    borderRadius: borderRadius.lg,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    zIndex: 1000,
+    elevation: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+  },
+  toastText: {
+    ...typography.body,
+    color: colors.white,
+    flex: 1,
   },
 });
