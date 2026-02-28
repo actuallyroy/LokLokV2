@@ -5,7 +5,9 @@
       "Bash(npx expo install:*)",
       "WebFetch(domain:github.com)",
       "Bash(yarn add react-native-qrcode-styled)",
-      "Bash(npx expo run:android)"
+      "Bash(npx expo run:android)",
+      "Bash(adb logcat:*)",
+      "Bash(python:*)"
     ]
   }
 }
