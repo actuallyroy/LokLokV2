@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   Alert,
   Dimensions,
+  ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BarCodeScanner, BarCodeScannerResult } from 'expo-barcode-scanner';
@@ -16,6 +17,9 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors, typography, spacing, borderRadius } from '../theme';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { usePairingStore, useSettingsStore } from '../store';
+import { createPairing } from '../services/strokeSync';
+import { registerForPushNotifications } from '../services/notifications';
+import { getDeviceId, saveDeviceId } from '../services/backgroundTask';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCAN_AREA_SIZE = SCREEN_WIDTH * 0.7;
@@ -34,9 +38,10 @@ export const QRScannerScreen: React.FC<QRScannerScreenProps> = ({
 }) => {
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const [scanned, setScanned] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
   const insets = useSafeAreaInsets();
   const { setPaired } = usePairingStore();
-  const { setOnboardingComplete } = useSettingsStore();
+  const { setOnboardingComplete, userName } = useSettingsStore();
 
   useEffect(() => {
     const getBarCodeScannerPermissions = async () => {
@@ -47,34 +52,77 @@ export const QRScannerScreen: React.FC<QRScannerScreenProps> = ({
     getBarCodeScannerPermissions();
   }, []);
 
-  const processScannedData = (data: string) => {
-    // Check if it's a valid LokLok pairing code
-    if (data.startsWith('loklok://pair/')) {
-      Alert.alert(
-        'Pairing Successful!',
-        'You are now connected with your partner.',
-        [
-          {
-            text: 'Start Drawing',
-            onPress: () => {
-              setPaired(true, 'Partner');
-              setOnboardingComplete();
-              navigation.replace('SharedCanvas');
-            },
-          },
-        ]
-      );
-    } else {
-      Alert.alert(
-        'Invalid QR Code',
-        'This doesn\'t appear to be a LokLok pairing code. Please scan your partner\'s QR code.',
-        [
-          {
-            text: 'Try Again',
-            onPress: () => setScanned(false),
-          },
-        ]
-      );
+  const processScannedData = async (data: string) => {
+    setIsProcessing(true);
+
+    try {
+      // Try to parse as JSON (new format)
+      const parsed = JSON.parse(data);
+
+      if (parsed.type === 'loklok_pair' && parsed.deviceId) {
+        // Get my device info
+        let myDeviceId = await getDeviceId();
+        if (!myDeviceId) {
+          myDeviceId = `device_${Date.now().toString(36)}_${Math.random().toString(36).substr(2, 9)}`;
+          await saveDeviceId(myDeviceId);
+        }
+        const myFcmToken = await registerForPushNotifications();
+
+        // Create pairing in Firebase
+        const pairingId = await createPairing(
+          myDeviceId,
+          myFcmToken || '',
+          userName || 'Partner',
+          parsed.deviceId,
+          parsed.fcmToken || '',
+          parsed.userName || 'Partner'
+        );
+
+        if (pairingId) {
+          // Store pairing locally
+          setPaired(
+            pairingId,
+            parsed.userName || 'Partner',
+            parsed.deviceId,
+            parsed.fcmToken
+          );
+          setOnboardingComplete();
+
+          Alert.alert(
+            'Pairing Successful!',
+            `You are now connected with ${parsed.userName || 'your partner'}.`,
+            [
+              {
+                text: 'Start Drawing',
+                onPress: () => navigation.replace('SharedCanvas'),
+              },
+            ]
+          );
+        } else {
+          throw new Error('Failed to create pairing');
+        }
+      } else {
+        throw new Error('Invalid QR format');
+      }
+    } catch (error) {
+      console.error('Error processing QR code:', error);
+
+      // Check for old format (backwards compatibility)
+      if (data.startsWith('loklok://pair/')) {
+        Alert.alert(
+          'Outdated QR Code',
+          'This QR code is from an older version. Please ask your partner to update their app and generate a new QR code.',
+          [{ text: 'OK', onPress: () => setScanned(false) }]
+        );
+      } else {
+        Alert.alert(
+          'Invalid QR Code',
+          'This doesn\'t appear to be a LokLok pairing code. Please scan your partner\'s QR code.',
+          [{ text: 'Try Again', onPress: () => setScanned(false) }]
+        );
+      }
+    } finally {
+      setIsProcessing(false);
     }
   };
 
@@ -215,16 +263,26 @@ export const QRScannerScreen: React.FC<QRScannerScreenProps> = ({
         {/* Bottom overlay */}
         <View style={[styles.overlaySection, styles.bottomOverlay, { paddingBottom: insets.bottom }]}>
           <Text style={styles.hint}>
-            Point your camera at your partner's QR code
+            {isProcessing ? 'Setting up connection...' : 'Point your camera at your partner\'s QR code'}
           </Text>
 
           {/* Gallery Button */}
-          <TouchableOpacity style={styles.galleryButton} onPress={handleScanFromGallery}>
-            <MaterialIcons name="photo-library" size={24} color={colors.white} />
-            <Text style={styles.galleryButtonText}>Scan from Gallery</Text>
-          </TouchableOpacity>
+          {!isProcessing && (
+            <TouchableOpacity style={styles.galleryButton} onPress={handleScanFromGallery}>
+              <MaterialIcons name="photo-library" size={24} color={colors.white} />
+              <Text style={styles.galleryButtonText}>Scan from Gallery</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </View>
+
+      {/* Processing Overlay */}
+      {isProcessing && (
+        <View style={styles.processingOverlay}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={styles.processingText}>Connecting with partner...</Text>
+        </View>
+      )}
     </View>
   );
 };
@@ -381,5 +439,16 @@ const styles = StyleSheet.create({
   backButtonAltText: {
     ...typography.body,
     color: colors.textTertiary,
+  },
+  processingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: spacing.lg,
+  },
+  processingText: {
+    ...typography.h4,
+    color: colors.white,
   },
 });

@@ -7,7 +7,10 @@
       "Bash(yarn add react-native-qrcode-styled)",
       "Bash(npx expo run:android)",
       "Bash(adb logcat:*)",
-      "Bash(python:*)"
+      "Bash(python:*)",
+      "Bash(dir:*)",
+      "Bash(findstr:*)",
+      "Bash(cmd /c \"dir \"\"C:\\\\Program Files\\\\Android\"\" /s /b 2>nul | findstr keytool\")"
     ]
   }
 }

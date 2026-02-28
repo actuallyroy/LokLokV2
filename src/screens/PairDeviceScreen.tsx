@@ -1,4 +1,4 @@
-import React, { useMemo, useRef } from 'react';
+import React, { useMemo, useRef, useEffect, useState } from 'react';
 import { View, Text, StyleSheet, StatusBar, TouchableOpacity, Alert, Image } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -11,6 +11,9 @@ import { Header, Button } from '../components/common';
 import { colors, typography, spacing, borderRadius } from '../theme';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { usePairingStore, useSettingsStore } from '../store';
+import { registerForPushNotifications } from '../services/notifications';
+import { getDeviceId, saveDeviceId } from '../services/backgroundTask';
+import { listenForPairing } from '../services/strokeSync';
 
 type PairDeviceScreenNavigationProp = NativeStackNavigationProp<
   RootStackParamList,
@@ -24,16 +27,65 @@ interface PairDeviceScreenProps {
 export const PairDeviceScreen: React.FC<PairDeviceScreenProps> = ({
   navigation,
 }) => {
-  const { isPaired, partnerName, disconnect } = usePairingStore();
-  const { hasCompletedOnboarding, setOnboardingComplete } = useSettingsStore();
+  const { isPaired, partnerName, disconnect, setPaired } = usePairingStore();
+  const { hasCompletedOnboarding, setOnboardingComplete, userName } = useSettingsStore();
   const insets = useSafeAreaInsets();
   const viewShotRef = useRef<ViewShot>(null);
+  const [deviceId, setDeviceIdState] = useState<string | null>(null);
+  const [fcmToken, setFcmToken] = useState<string | null>(null);
 
-  // Generate a unique pairing code (in real app, this would come from backend)
-  const pairingCode = useMemo(() => {
-    const code = `loklok://pair/${Date.now().toString(36)}-${Math.random().toString(36).substr(2, 9)}`;
-    return code;
+  // Initialize device ID and FCM token
+  useEffect(() => {
+    const init = async () => {
+      // Get or create device ID
+      let id = await getDeviceId();
+      if (!id) {
+        id = `device_${Date.now().toString(36)}_${Math.random().toString(36).substr(2, 9)}`;
+        await saveDeviceId(id);
+      }
+      setDeviceIdState(id);
+
+      // Get FCM token
+      const token = await registerForPushNotifications();
+      setFcmToken(token);
+    };
+    init();
   }, []);
+
+  // Listen for pairing requests (when someone scans our code)
+  useEffect(() => {
+    if (!deviceId || isPaired) return;
+
+    const unsubscribe = listenForPairing(deviceId, (pairingData) => {
+      // Someone paired with us!
+      setPaired(
+        pairingData.pairingId,
+        pairingData.partnerName,
+        pairingData.partnerId,
+        pairingData.partnerFcmToken
+      );
+      setOnboardingComplete();
+      Alert.alert(
+        'Paired!',
+        `You are now connected with ${pairingData.partnerName}`,
+        [{ text: 'Start Drawing', onPress: () => navigation.replace('SharedCanvas') }]
+      );
+    });
+
+    return () => unsubscribe();
+  }, [deviceId, isPaired]);
+
+  // Generate QR code data with device info
+  const pairingCode = useMemo(() => {
+    if (!deviceId) return '';
+    const data = {
+      type: 'loklok_pair',
+      deviceId,
+      fcmToken: fcmToken || '',
+      userName: userName || 'Partner',
+    };
+    return JSON.stringify(data);
+  }, [deviceId, fcmToken, userName]);
 
   const handleScanCode = () => {
     navigation.navigate('QRScanner');
@@ -140,23 +192,31 @@ export const PairDeviceScreen: React.FC<PairDeviceScreenProps> = ({
         {!isPaired && (
           <View style={styles.qrContainer}>
             <View style={styles.qrCard}>
-              <QRCodeStyled
-                data={pairingCode}
-                style={{ backgroundColor: 'white' }}
-                padding={16}
-                pieceSize={6}
-                pieceBorderRadius={3}
-                pieceCornerType="rounded"
-                isPiecesGlued={true}
-                color={colors.backgroundDark}
-              />
-              {/* Rounded logo overlay */}
-              <View style={styles.logoOverlay}>
-                <Image
-                  source={require('../../assets/icon.png')}
-                  style={styles.logoImage}
-                />
-              </View>
+              {pairingCode ? (
+                <>
+                  <QRCodeStyled
+                    data={pairingCode}
+                    style={{ backgroundColor: 'white' }}
+                    padding={16}
+                    pieceSize={6}
+                    pieceBorderRadius={3}
+                    pieceCornerType="rounded"
+                    isPiecesGlued={true}
+                    color={colors.backgroundDark}
+                  />
+                  {/* Rounded logo overlay */}
+                  <View style={styles.logoOverlay}>
+                    <Image
+                      source={require('../../assets/icon.png')}
+                      style={styles.logoImage}
+                    />
+                  </View>
+                </>
+              ) : (
+                <View style={styles.loadingContainer}>
+                  <Text style={styles.loadingText}>Generating QR code...</Text>
+                </View>
+              )}
             </View>
             <Text style={styles.qrHint}>Your pairing code</Text>
 
@@ -228,24 +288,26 @@ export const PairDeviceScreen: React.FC<PairDeviceScreenProps> = ({
             </View>
 
             {/* QR Code */}
-            <View style={styles.shareableQrWrapper}>
-              <QRCodeStyled
-                data={pairingCode}
-                style={{ backgroundColor: 'white' }}
-                padding={12}
-                pieceSize={5}
-                pieceBorderRadius={2.5}
-                pieceCornerType="rounded"
-                isPiecesGlued={true}
-                color={colors.backgroundDark}
-              />
-              <View style={styles.shareableLogoOverlay}>
-                <Image
-                  source={require('../../assets/icon.png')}
-                  style={styles.shareableLogoSmall}
+            {pairingCode && (
+              <View style={styles.shareableQrWrapper}>
+                <QRCodeStyled
+                  data={pairingCode}
+                  style={{ backgroundColor: 'white' }}
+                  padding={12}
+                  pieceSize={5}
+                  pieceBorderRadius={2.5}
+                  pieceCornerType="rounded"
+                  isPiecesGlued={true}
+                  color={colors.backgroundDark}
                 />
+                <View style={styles.shareableLogoOverlay}>
+                  <Image
+                    source={require('../../assets/icon.png')}
+                    style={styles.shareableLogoSmall}
+                  />
+                </View>
               </View>
-            </View>
+            )}
 
             {/* Instructions */}
             <Text style={styles.shareableTitle}>Scan to connect with me</Text>
@@ -300,6 +362,15 @@ const styles = StyleSheet.create({
     position: 'relative',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    ...typography.body,
+    color: colors.textTertiary,
   },
   logoOverlay: {
     position: 'absolute',

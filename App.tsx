@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, StyleSheet } from 'react-native';
+import { View, StyleSheet, Alert } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import * as Font from 'expo-font';
 import { AppNavigator } from './src/navigation';
@@ -10,6 +10,8 @@ import {
   addNotificationReceivedListener,
   addNotificationResponseListener,
 } from './src/services/notifications';
+import { applyReceivedDrawing } from './src/services/backgroundTask';
+import { useSettingsStore } from './src/store';
 
 // Initialize Firebase
 initializeFirebase();
@@ -36,23 +38,36 @@ export default function App() {
     registerForPushNotifications().then((token) => {
       if (token) {
         console.log('Push token:', token);
-        // TODO: Store this token for pairing
       }
     });
 
     // Handle notifications received while app is open
-    const notificationListener = addNotificationReceivedListener((notification) => {
+    const notificationListener = addNotificationReceivedListener(async (notification) => {
       console.log('Notification received:', notification);
-      // Handle the notification (e.g., show a toast, update UI)
+      const data = notification.request.content.data;
+
+      if (data?.type === 'new_drawing' && data?.pairingId) {
+        // Auto-apply if setting is enabled
+        const autoApply = useSettingsStore.getState().autoApplyDrawings;
+        if (autoApply) {
+          const success = await applyReceivedDrawing(data.pairingId);
+          if (success) {
+            Alert.alert('New Drawing!', 'A drawing from your partner has been applied to your lockscreen.');
+          }
+        }
+      }
     });
 
     // Handle notification taps
-    const responseListener = addNotificationResponseListener((response) => {
+    const responseListener = addNotificationResponseListener(async (response) => {
       console.log('Notification tapped:', response);
       const data = response.notification.request.content.data;
-      if (data?.type === 'new_drawing') {
-        // Navigate to canvas or show the drawing
-        console.log('New drawing received from partner');
+      if (data?.type === 'new_drawing' && data?.pairingId) {
+        // Apply the drawing when user taps notification
+        const success = await applyReceivedDrawing(data.pairingId);
+        if (success) {
+          Alert.alert('Applied!', 'Drawing has been set as your lockscreen.');
+        }
       }
     });
 

@@ -27,6 +27,7 @@ interface SettingsState {
   setNotificationAlerts: (value: boolean) => void;
   setDefaultBrushStyle: (style: BrushStyle) => void;
   setDefaultInkColor: (color: string) => void;
+  setUserName: (name: string) => void;
   setUserProfile: (name: string, email: string, avatar?: string) => void;
   setOnboardingComplete: () => void;
   resetOnboarding: () => void;
@@ -53,6 +54,8 @@ export const useSettingsStore = create<SettingsState>()(
       setDefaultBrushStyle: (style) => set({ defaultBrushStyle: style }),
 
       setDefaultInkColor: (color) => set({ defaultInkColor: color }),
+
+      setUserName: (name) => set({ userName: name }),
 
       setUserProfile: (name, email, avatar) =>
         set({ userName: name, userEmail: email, userAvatar: avatar || null }),

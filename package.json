@@ -1,12 +1,16 @@
 {
   "name": "loklok",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "main": "expo/AppEntry.js",
   "scripts": {
     "start": "expo start",
     "android": "expo run:android",
     "ios": "expo run:ios",
-    "web": "expo start --web"
+    "web": "expo start --web",
+    "release": "node scripts/release.js patch",
+    "release:patch": "node scripts/release.js patch",
+    "release:minor": "node scripts/release.js minor",
+    "release:major": "node scripts/release.js major"
   },
   "dependencies": {
     "@expo/vector-icons": "~14.0.4",

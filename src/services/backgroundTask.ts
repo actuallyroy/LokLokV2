@@ -1,5 +1,6 @@
 import * as TaskManager from 'expo-task-manager';
 import * as Notifications from 'expo-notifications';
+import * as FileSystem from 'expo-file-system';
 import { getLatestDrawing, DrawingData } from './strokeSync';
 import { getWallpaper, setLockscreenWallpaper } from '../../modules/wallpaper';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -52,7 +53,7 @@ export async function registerBackgroundNotificationHandler(): Promise<void> {
 
 /**
  * Apply received drawing to lockscreen
- * This composites the strokes on top of the user's wallpaper
+ * Uses the pre-rendered image if available, otherwise falls back to compositing
  */
 export async function applyReceivedDrawing(pairingId: string): Promise<boolean> {
   try {
@@ -60,7 +61,7 @@ export async function applyReceivedDrawing(pairingId: string): Promise<boolean> 
 
     // Get the drawing data from Firestore
     const drawingData = await getLatestDrawing(pairingId);
-    if (!drawingData || drawingData.strokes.length === 0) {
+    if (!drawingData) {
       console.log('No drawing data found');
       return false;
     }
@@ -72,29 +73,29 @@ export async function applyReceivedDrawing(pairingId: string): Promise<boolean> 
       return false;
     }
 
-    // Get the user's saved background image
-    let backgroundUri = await AsyncStorage.getItem(STORAGE_KEYS.BACKGROUND_IMAGE_URI);
+    // If we have a pre-rendered image, use it directly
+    if (drawingData.imageBase64) {
+      console.log('Using pre-rendered image from partner');
+      try {
+        // Save base64 to a temp file
+        const tempPath = `${FileSystem.cacheDirectory}partner_drawing_${Date.now()}.jpg`;
+        await FileSystem.writeAsStringAsync(tempPath, drawingData.imageBase64, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
 
-    // If no saved background, try to get system wallpaper
-    if (!backgroundUri) {
-      backgroundUri = await getWallpaper();
+        // Set as lockscreen
+        const success = await setLockscreenWallpaper(tempPath);
+        if (success) {
+          console.log('Drawing applied to lockscreen successfully');
+          return true;
+        }
+      } catch (imageError) {
+        console.error('Error applying image:', imageError);
+      }
     }
 
-    if (!backgroundUri) {
-      console.log('No background image available');
-      return false;
-    }
-
-    // TODO: Composite the strokes on the background
-    // This requires creating a canvas, drawing the background,
-    // then drawing the strokes, and saving the result
-    // For now, we'll need to implement this in native code or use a library
-
-    console.log('Drawing would be applied here');
-    // const compositeUri = await compositeDrawingOnBackground(backgroundUri, drawingData);
-    // const success = await setLockscreenWallpaper(compositeUri);
-
-    return true;
+    console.log('No pre-rendered image available');
+    return false;
   } catch (error) {
     console.error('Error applying received drawing:', error);
     return false;

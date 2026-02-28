@@ -22,7 +22,13 @@ ios/
 *.p8
 *.p12
 *.key
+*.keystore
 *.mobileprovision
+
+# Firebase
+google-services.json
+GoogleService-Info.plist
+*-firebase-adminsdk-*.json
 
 # Metro
 .metro-health-check*

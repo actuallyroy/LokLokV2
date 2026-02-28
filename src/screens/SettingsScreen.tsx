@@ -8,6 +8,8 @@ import {
   TouchableOpacity,
   Alert,
   Linking,
+  TextInput,
+  Modal,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -45,9 +47,27 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
     setAutoApplyDrawings,
     setNotificationAlerts,
     setDefaultBrushStyle,
+    setUserName,
   } = useSettingsStore();
 
   const { isPaired, partnerName, disconnect } = usePairingStore();
+
+  const [isNameModalVisible, setIsNameModalVisible] = useState(false);
+  const [newName, setNewName] = useState(userName);
+
+  const handleChangeName = useCallback(() => {
+    setNewName(userName);
+    setIsNameModalVisible(true);
+  }, [userName]);
+
+  const handleSaveName = useCallback(() => {
+    if (newName.trim()) {
+      setUserName(newName.trim());
+      setIsNameModalVisible(false);
+    } else {
+      Alert.alert('Invalid Name', 'Please enter a valid name.');
+    }
+  }, [newName, setUserName]);
 
   const handleAutoApplyToggle = useCallback((enabled: boolean) => {
     setAutoApplyDrawings(enabled);
@@ -147,7 +167,10 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
             showEditBadge
             onEditPress={() => console.log('Edit avatar')}
           />
-          <Text style={styles.userName}>{userName}</Text>
+          <TouchableOpacity onPress={handleChangeName} style={styles.nameContainer}>
+            <Text style={styles.userName}>{userName}</Text>
+            <MaterialIcons name="edit" size={16} color={colors.textSecondary} />
+          </TouchableOpacity>
           <Text style={styles.userEmail}>{userEmail}</Text>
 
           {/* Partner Status */}
@@ -326,6 +349,43 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
         <Text style={styles.versionText}>LokLok v1.0.0</Text>
         <Text style={styles.copyrightText}>Made with love for couples</Text>
       </ScrollView>
+
+      {/* Name Edit Modal */}
+      <Modal
+        visible={isNameModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setIsNameModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Change Name</Text>
+            <TextInput
+              style={styles.nameInput}
+              value={newName}
+              onChangeText={setNewName}
+              placeholder="Enter your name"
+              placeholderTextColor={colors.textTertiary}
+              autoFocus
+              selectTextOnFocus
+            />
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={styles.modalButtonCancel}
+                onPress={() => setIsNameModalVisible(false)}
+              >
+                <Text style={styles.modalButtonCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.modalButtonSave}
+                onPress={handleSaveName}
+              >
+                <Text style={styles.modalButtonSaveText}>Save</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -349,7 +409,6 @@ const styles = StyleSheet.create({
   userName: {
     ...typography.h4,
     color: colors.textPrimary,
-    marginTop: spacing.lg,
   },
   userEmail: {
     ...typography.bodySmall,
@@ -537,5 +596,66 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: spacing.xs,
     opacity: 0.6,
+  },
+  nameContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginTop: spacing.lg,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.xxl,
+  },
+  modalContent: {
+    backgroundColor: colors.cardDark,
+    borderRadius: borderRadius.default,
+    padding: spacing.xl,
+    width: '100%',
+    maxWidth: 320,
+  },
+  modalTitle: {
+    ...typography.h4,
+    color: colors.textPrimary,
+    marginBottom: spacing.lg,
+    textAlign: 'center',
+  },
+  nameInput: {
+    ...typography.body,
+    color: colors.textPrimary,
+    backgroundColor: colors.cardDarker,
+    borderRadius: borderRadius.sm,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    marginBottom: spacing.lg,
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    gap: spacing.md,
+  },
+  modalButtonCancel: {
+    flex: 1,
+    paddingVertical: spacing.md,
+    borderRadius: borderRadius.full,
+    backgroundColor: colors.cardDarker,
+    alignItems: 'center',
+  },
+  modalButtonCancelText: {
+    ...typography.buttonSmall,
+    color: colors.textSecondary,
+  },
+  modalButtonSave: {
+    flex: 1,
+    paddingVertical: spacing.md,
+    borderRadius: borderRadius.full,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+  },
+  modalButtonSaveText: {
+    ...typography.buttonSmall,
+    color: colors.white,
   },
 });

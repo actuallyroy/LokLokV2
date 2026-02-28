@@ -29,9 +29,9 @@ import {
 import { colors, typography, spacing, borderRadius } from '../theme';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { useCanvasStore, usePairingStore, useSettingsStore } from '../store';
-import { sendDrawingToPartner, getPartnerFcmToken } from '../services/strokeSync';
+import { sendDrawingToPartner, getPartnerFcmToken, subscribeToDrawings } from '../services/strokeSync';
 import { sendPushToPartner } from '../services/notifications';
-import { saveBackgroundImageUri } from '../services/backgroundTask';
+import { saveBackgroundImageUri, getBackgroundImageUri, getDeviceId, applyReceivedDrawing } from '../services/backgroundTask';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -53,7 +53,7 @@ export const SharedCanvasScreen: React.FC<SharedCanvasScreenProps> = ({
   const [isSending, setIsSending] = useState(false);
   const canvasRef = useRef<View>(null);
 
-  const { userName } = useSettingsStore();
+  const { userName, autoApplyDrawings } = useSettingsStore();
 
   // Use device screen aspect ratio (how lockscreen actually appears)
   const screenAspectRatio = SCREEN_WIDTH / SCREEN_HEIGHT;
@@ -61,15 +61,121 @@ export const SharedCanvasScreen: React.FC<SharedCanvasScreenProps> = ({
   // Load wallpaper on mount
   useEffect(() => {
     const loadWallpaper = async () => {
+      // First try to load previously saved background image
+      const savedUri = await getBackgroundImageUri();
+      if (savedUri) {
+        setWallpaperUri(savedUri);
+        return;
+      }
+
       // Try to get wallpaper automatically (may fail on Android 13+)
       const uri = await getWallpaper();
       if (uri) {
         setWallpaperUri(uri);
+        // Save for future sessions
+        await saveBackgroundImageUri(uri);
       }
       // If null, user can select manually via the button
     };
     loadWallpaper();
   }, []);
+
+  // Track if we should apply to lockscreen after render
+  const [pendingLockscreenApply, setPendingLockscreenApply] = useState(false);
+
+  // Apply to lockscreen when strokes are loaded and pending
+  useEffect(() => {
+    if (pendingLockscreenApply && strokes.length > 0 && wallpaperUri && canvasRef.current) {
+      // Small delay to ensure canvas has rendered
+      const timer = setTimeout(async () => {
+        try {
+          const uri = await captureRef(canvasRef, {
+            format: 'png',
+            quality: 1,
+            result: 'tmpfile',
+          });
+          const success = await setLockscreenWallpaper(uri);
+          if (success) {
+            Alert.alert('Applied!', 'Drawing has been set as your lockscreen.');
+          }
+        } catch (error) {
+          console.error('Error applying to lockscreen:', error);
+        }
+        setPendingLockscreenApply(false);
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [pendingLockscreenApply, strokes, wallpaperUri]);
+
+  // Subscribe to incoming drawings from partner
+  useEffect(() => {
+    if (!isPaired || !pairingId) return;
+
+    let myDeviceId: string | null = null;
+
+    const setupSubscription = async () => {
+      myDeviceId = await getDeviceId();
+
+      const unsubscribe = subscribeToDrawings(pairingId, async (drawing) => {
+        // Only load if it's from partner, not from me
+        if (drawing.senderId !== myDeviceId && (drawing.strokes.length > 0 || drawing.imageBase64)) {
+          console.log('Received drawing from partner:', drawing.strokes.length, 'strokes', drawing.imageBase64 ? 'with image' : 'no image');
+          setStrokes(drawing.strokes);
+
+          // Auto-apply if setting is enabled
+          if (autoApplyDrawings) {
+            // If we have a pre-rendered image, use it directly (faster & works in background)
+            if (drawing.imageBase64) {
+              const success = await applyReceivedDrawing(pairingId);
+              Alert.alert(
+                'New Drawing!',
+                success
+                  ? `${drawing.senderName} sent you a drawing! Applied to lockscreen.`
+                  : `${drawing.senderName} sent you a drawing! (Could not apply to lockscreen)`
+              );
+            } else {
+              // Fall back to canvas capture
+              setPendingLockscreenApply(true);
+              Alert.alert(
+                'New Drawing!',
+                `${drawing.senderName} sent you a drawing! Applying to lockscreen...`
+              );
+            }
+          } else {
+            // Show alert with option to apply to lockscreen
+            Alert.alert(
+              'New Drawing!',
+              `${drawing.senderName} sent you a drawing!`,
+              [
+                { text: 'View Only', style: 'cancel' },
+                {
+                  text: 'Apply to Lockscreen',
+                  onPress: async () => {
+                    if (drawing.imageBase64) {
+                      await applyReceivedDrawing(pairingId);
+                    } else {
+                      setPendingLockscreenApply(true);
+                    }
+                  },
+                },
+              ]
+            );
+          }
+        }
+      });
+
+      return unsubscribe;
+    };
+
+    let unsubscribe: (() => void) | undefined;
+    setupSubscription().then((unsub) => {
+      unsubscribe = unsub;
+    });
+
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
+  }, [isPaired, pairingId, setStrokes, autoApplyDrawings]);
 
   // Pick wallpaper from gallery
   const pickWallpaperFromGallery = async () => {
@@ -81,7 +187,10 @@ export const SharedCanvasScreen: React.FC<SharedCanvasScreenProps> = ({
       });
 
       if (!result.canceled && result.assets[0]) {
-        setWallpaperUri(result.assets[0].uri);
+        const uri = result.assets[0].uri;
+        setWallpaperUri(uri);
+        // Save for future sessions
+        await saveBackgroundImageUri(uri);
       }
     } catch (error) {
       console.error('Error picking image:', error);
@@ -102,7 +211,7 @@ export const SharedCanvasScreen: React.FC<SharedCanvasScreenProps> = ({
     clearCanvas,
   } = useCanvasStore();
 
-  const { isPartnerDrawing, isPaired, pairingId, partnerName } = usePairingStore();
+  const { isPartnerDrawing, isPaired, pairingId, partnerName, partnerFcmToken } = usePairingStore();
 
   const handleStrokesChange = useCallback(
     (newStrokes: Stroke[]) => {
@@ -159,21 +268,38 @@ export const SharedCanvasScreen: React.FC<SharedCanvasScreenProps> = ({
   }, [strokes, navigation, isPaired, pairingId, partnerName]);
 
   const sendToPartner = async () => {
-    if (!pairingId) {
+    if (!pairingId || !canvasRef.current) {
       Alert.alert('Error', 'No partner connected');
       return;
     }
 
     setIsSending(true);
     try {
-      // Send strokes to Firestore
+      // Get my device ID
+      const myDeviceId = await getDeviceId() || 'unknown';
+
+      // Capture canvas as base64 for background updates
+      let imageBase64: string | undefined;
+      try {
+        const uri = await captureRef(canvasRef, {
+          format: 'jpg',
+          quality: 0.7, // Compress to stay under Firestore limits
+          result: 'base64',
+        });
+        imageBase64 = uri;
+      } catch (captureError) {
+        console.warn('Could not capture canvas image:', captureError);
+      }
+
+      // Send strokes and image to Firestore
       const success = await sendDrawingToPartner(
         pairingId,
         strokes,
-        'device-id', // TODO: Get actual device ID
+        myDeviceId,
         userName,
         SCREEN_WIDTH,
-        SCREEN_HEIGHT
+        SCREEN_HEIGHT,
+        imageBase64
       );
 
       if (!success) {
@@ -181,7 +307,12 @@ export const SharedCanvasScreen: React.FC<SharedCanvasScreenProps> = ({
       }
 
       // Get partner's FCM token and send push notification
-      const partnerToken = await getPartnerFcmToken(pairingId);
+      // First try from local store, then from Firestore
+      let partnerToken = partnerFcmToken;
+      if (!partnerToken) {
+        partnerToken = await getPartnerFcmToken(pairingId, myDeviceId);
+      }
+
       if (partnerToken) {
         await sendPushToPartner(partnerToken, userName, pairingId);
       }
@@ -307,6 +438,16 @@ export const SharedCanvasScreen: React.FC<SharedCanvasScreenProps> = ({
               />
             </View>
           )}
+
+          {/* Change Background Button */}
+          {wallpaperUri && (
+            <TouchableOpacity
+              style={styles.changeBackgroundButton}
+              onPress={pickWallpaperFromGallery}
+            >
+              <MaterialIcons name="image" size={20} color={colors.white} />
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* Saving/Sending Overlay - outside canvas ref so it's not captured */}
@@ -407,6 +548,18 @@ const styles = StyleSheet.create({
   },
   drawingLayer: {
     ...StyleSheet.absoluteFillObject,
+  },
+  changeBackgroundButton: {
+    position: 'absolute',
+    top: spacing.sm,
+    right: spacing.sm,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 10,
   },
   savingOverlay: {
     ...StyleSheet.absoluteFillObject,
