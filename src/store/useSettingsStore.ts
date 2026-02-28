@@ -17,15 +17,19 @@ interface SettingsState {
   userEmail: string;
   userAvatar: string | null;
 
+  // Onboarding
+  hasCompletedOnboarding: boolean;
+
   // Actions
   setLockScreenOverlay: (value: boolean) => void;
   setNotificationAlerts: (value: boolean) => void;
   setDefaultBrushStyle: (style: BrushStyle) => void;
   setDefaultInkColor: (color: string) => void;
   setUserProfile: (name: string, email: string, avatar?: string) => void;
+  setOnboardingComplete: () => void;
 }
 
-export const useSettingsStore = create<SettingsState>((set) => ({
+export const useSettingsStore = create<SettingsState>()((set) => ({
   // Initial state
   lockScreenOverlay: true,
   notificationAlerts: false,
@@ -34,6 +38,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   userName: 'Sarah Jenkins',
   userEmail: 'sarah.j@example.com',
   userAvatar: null,
+  hasCompletedOnboarding: false,
 
   // Actions
   setLockScreenOverlay: (value) => set({ lockScreenOverlay: value }),
@@ -46,4 +51,6 @@ export const useSettingsStore = create<SettingsState>((set) => ({
 
   setUserProfile: (name, email, avatar) =>
     set({ userName: name, userEmail: email, userAvatar: avatar || null }),
+
+  setOnboardingComplete: () => set({ hasCompletedOnboarding: true }),
 }));

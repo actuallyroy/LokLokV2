@@ -1,0 +1,1 @@
+export { LockScreen } from './LockScreenModule';

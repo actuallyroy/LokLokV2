@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -6,13 +6,16 @@ import {
   SafeAreaView,
   ScrollView,
   TouchableOpacity,
+  Alert,
+  Platform,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Header, Toggle, Avatar, Button, SettingsItem } from '../components/common';
+import { Header, Toggle, Avatar, SettingsItem } from '../components/common';
 import { colors, typography, spacing, borderRadius } from '../theme';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { useSettingsStore, BrushStyle } from '../store';
+import { LockScreen } from '../modules';
 
 type SettingsScreenNavigationProp = NativeStackNavigationProp<
   RootStackParamList,
@@ -44,6 +47,79 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
     setNotificationAlerts,
     setDefaultBrushStyle,
   } = useSettingsStore();
+
+  const [isServiceRunning, setIsServiceRunning] = useState(false);
+
+  // Check service status on mount
+  useEffect(() => {
+    checkServiceStatus();
+  }, []);
+
+  const checkServiceStatus = useCallback(async () => {
+    if (Platform.OS === 'android') {
+      const running = await LockScreen.isServiceRunning();
+      setIsServiceRunning(running);
+    }
+  }, []);
+
+  const handleLockScreenToggle = useCallback(async (enabled: boolean) => {
+    if (Platform.OS !== 'android') {
+      Alert.alert('Not Available', 'Lock screen overlay is only available on Android');
+      return;
+    }
+
+    try {
+      if (enabled) {
+        // Check permission first
+        const hasPermission = await LockScreen.checkOverlayPermission();
+
+        if (!hasPermission) {
+          Alert.alert(
+            'Permission Required',
+            'LokLok needs permission to display over other apps to show drawings on your lock screen.',
+            [
+              { text: 'Cancel', style: 'cancel' },
+              {
+                text: 'Grant Permission',
+                onPress: async () => {
+                  await LockScreen.requestOverlayPermission();
+                  // User will need to manually enable and come back
+                  Alert.alert(
+                    'Enable Permission',
+                    'Please enable "Display over other apps" for LokLok, then come back and try again.'
+                  );
+                },
+              },
+            ]
+          );
+          return;
+        }
+
+        // Start the service
+        await LockScreen.startService();
+        setIsServiceRunning(true);
+        setLockScreenOverlay(true);
+      } else {
+        // Stop the service
+        await LockScreen.stopService();
+        setIsServiceRunning(false);
+        setLockScreenOverlay(false);
+      }
+    } catch (error) {
+      console.error('Error toggling lock screen:', error);
+      Alert.alert('Error', 'Failed to toggle lock screen overlay');
+    }
+  }, [setLockScreenOverlay]);
+
+  const handleTestLockScreen = useCallback(async () => {
+    if (Platform.OS !== 'android') return;
+
+    try {
+      await LockScreen.showLockScreen();
+    } catch (error) {
+      console.error('Error showing lock screen:', error);
+    }
+  }, []);
 
   const renderBrushStylePreview = (style: BrushStyle, isSelected: boolean) => {
     return (
@@ -119,14 +195,22 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
             <SettingsItem
               icon="fit-screen"
               title="Lock Screen Overlay"
-              subtitle="Show drawings on wake"
+              subtitle={isServiceRunning ? "Service running" : "Show drawings on wake"}
               rightElement={
                 <Toggle
                   value={lockScreenOverlay}
-                  onValueChange={setLockScreenOverlay}
+                  onValueChange={handleLockScreenToggle}
                 />
               }
             />
+            {Platform.OS === 'android' && lockScreenOverlay && (
+              <TouchableOpacity
+                style={styles.testButton}
+                onPress={handleTestLockScreen}
+              >
+                <Text style={styles.testButtonText}>Test Lock Screen</Text>
+              </TouchableOpacity>
+            )}
             <SettingsItem
               icon="notifications"
               iconColor="#9C27B0"
@@ -303,6 +387,20 @@ const styles = StyleSheet.create({
     backgroundColor: colors.cardDark,
     borderRadius: borderRadius.default,
     padding: spacing.lg,
+  },
+  testButton: {
+    backgroundColor: colors.primary,
+    borderRadius: borderRadius.sm,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    alignSelf: 'flex-start',
+    marginTop: spacing.sm,
+    marginBottom: spacing.md,
+    marginLeft: 52,
+  },
+  testButtonText: {
+    ...typography.buttonSmall,
+    color: colors.white,
   },
   brushStyleHeader: {
     flexDirection: 'row',

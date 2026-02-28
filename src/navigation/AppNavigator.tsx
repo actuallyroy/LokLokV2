@@ -6,6 +6,7 @@ import {
   PairDeviceScreen,
   SettingsScreen,
   SharedCanvasScreen,
+  QRScannerScreen,
 } from '../screens';
 import { colors } from '../theme';
 
@@ -14,6 +15,7 @@ export type RootStackParamList = {
   PairDevice: undefined;
   Settings: undefined;
   SharedCanvas: undefined;
+  QRScanner: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -33,6 +35,11 @@ export const AppNavigator: React.FC = () => {
         <Stack.Screen name="PairDevice" component={PairDeviceScreen} />
         <Stack.Screen name="Settings" component={SettingsScreen} />
         <Stack.Screen name="SharedCanvas" component={SharedCanvasScreen} />
+        <Stack.Screen
+          name="QRScanner"
+          component={QRScannerScreen}
+          options={{ animation: 'slide_from_bottom' }}
+        />
       </Stack.Navigator>
     </NavigationContainer>
   );

@@ -19,7 +19,7 @@ interface CanvasState {
   setSelectedTool: (tool: Tool) => void;
 }
 
-export const useCanvasStore = create<CanvasState>((set, get) => ({
+export const useCanvasStore = create<CanvasState>()((set) => ({
   // Initial state
   strokes: [],
   currentColor: colors.canvasColors[0],

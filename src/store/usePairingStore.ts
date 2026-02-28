@@ -13,7 +13,7 @@ interface PairingState {
   disconnect: () => void;
 }
 
-export const usePairingStore = create<PairingState>((set) => ({
+export const usePairingStore = create<PairingState>()((set) => ({
   // Initial state
   isPaired: false,
   partnerName: null,

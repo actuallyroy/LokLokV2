@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ViewStyle } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { colors, typography, spacing, borderRadius } from '../../theme';
 
@@ -24,14 +24,8 @@ export const SettingsItem: React.FC<SettingsItemProps> = ({
   onPress,
   showChevron = false,
 }) => {
-  const Container = onPress ? TouchableOpacity : View;
-
-  return (
-    <Container
-      style={styles.container}
-      onPress={onPress}
-      activeOpacity={0.7}
-    >
+  const content = (
+    <>
       <View
         style={[
           styles.iconContainer,
@@ -56,8 +50,22 @@ export const SettingsItem: React.FC<SettingsItemProps> = ({
           />
         )}
       </View>
-    </Container>
+    </>
   );
+
+  if (onPress) {
+    return (
+      <TouchableOpacity
+        style={styles.container}
+        onPress={onPress}
+        activeOpacity={0.7}
+      >
+        {content}
+      </TouchableOpacity>
+    );
+  }
+
+  return <View style={styles.container}>{content}</View>;
 };
 
 const styles = StyleSheet.create({
