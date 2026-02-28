@@ -87,9 +87,38 @@ export async function compositeAndSetLockscreen(
   }
 }
 
+/**
+ * Start the foreground sync service to prevent app from being frozen
+ * This is needed on Samsung devices with aggressive battery optimization
+ */
+export async function startSyncService(): Promise<boolean> {
+  if (!WallpaperNativeModule) return false;
+  try {
+    return await WallpaperNativeModule.startSyncService();
+  } catch (error) {
+    console.error('Error starting sync service:', error);
+    return false;
+  }
+}
+
+/**
+ * Stop the foreground sync service
+ */
+export async function stopSyncService(): Promise<boolean> {
+  if (!WallpaperNativeModule) return false;
+  try {
+    return await WallpaperNativeModule.stopSyncService();
+  } catch (error) {
+    console.error('Error stopping sync service:', error);
+    return false;
+  }
+}
+
 export default {
   getWallpaper,
   setLockscreenWallpaper,
   getScreenDimensions,
   compositeAndSetLockscreen,
+  startSyncService,
+  stopSyncService,
 };

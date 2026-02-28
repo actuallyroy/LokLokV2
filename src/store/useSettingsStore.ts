@@ -22,6 +22,9 @@ interface SettingsState {
   // Onboarding
   hasCompletedOnboarding: boolean;
 
+  // Confirmations
+  skipSendConfirmation: boolean;
+
   // Actions
   setAutoApplyDrawings: (value: boolean) => void;
   setNotificationAlerts: (value: boolean) => void;
@@ -31,6 +34,7 @@ interface SettingsState {
   setUserProfile: (name: string, email: string, avatar?: string) => void;
   setOnboardingComplete: () => void;
   resetOnboarding: () => void;
+  setSkipSendConfirmation: (value: boolean) => void;
 }
 
 export const useSettingsStore = create<SettingsState>()(
@@ -45,6 +49,7 @@ export const useSettingsStore = create<SettingsState>()(
       userEmail: 'sarah.j@example.com',
       userAvatar: null,
       hasCompletedOnboarding: false,
+      skipSendConfirmation: false,
 
       // Actions
       setAutoApplyDrawings: (value) => set({ autoApplyDrawings: value }),
@@ -63,6 +68,8 @@ export const useSettingsStore = create<SettingsState>()(
       setOnboardingComplete: () => set({ hasCompletedOnboarding: true }),
 
       resetOnboarding: () => set({ hasCompletedOnboarding: false }),
+
+      setSkipSendConfirmation: (value) => set({ skipSendConfirmation: value }),
     }),
     {
       name: 'loklok-settings',

@@ -95,22 +95,31 @@ export function subscribeToDrawings(
   pairingId: string,
   onDrawingReceived: (drawing: DrawingData) => void
 ): () => void {
-  console.log('Setting up Firestore subscription for:', pairingId);
+  console.log(`[${Date.now()}] Setting up Firestore subscription for: ${pairingId}`);
   const db = getFirestoreDb();
   const drawingRef = doc(db, 'drawings', pairingId);
+
+  let snapshotCount = 0;
 
   const unsubscribe = onSnapshot(
     drawingRef,
     (snapshot) => {
-      console.log('Firestore snapshot received, exists:', snapshot.exists());
+      snapshotCount++;
+      console.log(`[${Date.now()}] Firestore snapshot #${snapshotCount} received, exists: ${snapshot.exists()}`);
       if (snapshot.exists()) {
         const drawing = snapshot.data() as DrawingData;
-        console.log('Drawing data:', drawing.strokes?.length, 'strokes, sender:', drawing.senderId);
-        onDrawingReceived(drawing);
+        console.log(`[${Date.now()}] Drawing data: ${drawing.strokes?.length} strokes, sender: ${drawing.senderId}`);
+        console.log(`[${Date.now()}] Calling onDrawingReceived callback...`);
+        try {
+          onDrawingReceived(drawing);
+          console.log(`[${Date.now()}] onDrawingReceived callback completed`);
+        } catch (err) {
+          console.error(`[${Date.now()}] ERROR in onDrawingReceived:`, err);
+        }
       }
     },
     (error) => {
-      console.error('Firestore subscription error:', error);
+      console.error(`[${Date.now()}] Firestore subscription error:`, error);
     }
   );
 

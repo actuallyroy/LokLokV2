@@ -11,6 +11,7 @@ interface ToolBarProps {
   onUndo: () => void;
   onDone: () => void;
   canUndo: boolean;
+  doneLabel?: string;
 }
 
 export const ToolBar: React.FC<ToolBarProps> = ({
@@ -19,6 +20,7 @@ export const ToolBar: React.FC<ToolBarProps> = ({
   onUndo,
   onDone,
   canUndo,
+  doneLabel = 'Send',
 }) => {
   const tools: { id: Tool; icon: keyof typeof MaterialIcons.glyphMap }[] = [
     { id: 'brush', icon: 'brush' },
@@ -66,8 +68,8 @@ export const ToolBar: React.FC<ToolBarProps> = ({
       </TouchableOpacity>
 
       <TouchableOpacity style={styles.doneButton} onPress={onDone} activeOpacity={0.7}>
-        <MaterialIcons name="check" size={18} color={colors.white} />
-        <Text style={styles.doneText}>Done</Text>
+        <MaterialIcons name={doneLabel === 'Send' ? 'send' : 'check'} size={18} color={colors.white} />
+        <Text style={styles.doneText}>{doneLabel}</Text>
       </TouchableOpacity>
     </View>
   );

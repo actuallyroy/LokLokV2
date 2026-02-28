@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { View, StyleSheet, Alert, AppState, AppStateStatus } from 'react-native';
+import { View, StyleSheet, AppState, AppStateStatus } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import * as Font from 'expo-font';
 import { AppNavigator } from './src/navigation';
@@ -45,10 +45,8 @@ export default function App() {
         // If auto-apply is enabled and we're paired, check for new drawings
         // Use forceApply=true since we're coming from background
         if (autoApplyDrawings && isPaired && pairingId) {
-          const success = await applyReceivedDrawing(pairingId, true);
-          if (success) {
-            Alert.alert('Drawing Applied!', 'A new drawing from your partner has been set as your lockscreen.');
-          }
+          await applyReceivedDrawing(pairingId, true);
+          // Silent apply - no popup
         }
       }
 
@@ -81,10 +79,8 @@ export default function App() {
         // Auto-apply if setting is enabled
         const autoApply = useSettingsStore.getState().autoApplyDrawings;
         if (autoApply) {
-          const success = await applyReceivedDrawing(data.pairingId, true);
-          if (success) {
-            Alert.alert('New Drawing!', 'A drawing from your partner has been applied to your lockscreen.');
-          }
+          await applyReceivedDrawing(data.pairingId, true);
+          // Silent apply - no popup
         }
       }
     });
@@ -95,10 +91,8 @@ export default function App() {
       const data = response.notification.request.content.data;
       if (data?.type === 'new_drawing' && data?.pairingId) {
         // Apply the drawing when user taps notification
-        const success = await applyReceivedDrawing(data.pairingId, true);
-        if (success) {
-          Alert.alert('Applied!', 'Drawing has been set as your lockscreen.');
-        }
+        await applyReceivedDrawing(data.pairingId, true);
+        // Silent apply - no popup
       }
     });
 

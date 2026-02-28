@@ -9,10 +9,12 @@ import {
   Image,
   Alert,
   ActivityIndicator,
+  Modal,
+  Pressable,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import { getWallpaper, setLockscreenWallpaper } from '../../modules/wallpaper';
+import { getWallpaper, setLockscreenWallpaper, startSyncService, stopSyncService } from '../../modules/wallpaper';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -58,7 +60,12 @@ export const SharedCanvasScreen: React.FC<SharedCanvasScreenProps> = ({
   const [isSending, setIsSending] = useState(false);
   const canvasRef = useRef<View>(null);
 
-  const { userName, autoApplyDrawings } = useSettingsStore();
+  const { userName, autoApplyDrawings, skipSendConfirmation, setSkipSendConfirmation } = useSettingsStore();
+
+  // Confirmation modal state
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [dontShowAgain, setDontShowAgain] = useState(false);
+  const [pendingAction, setPendingAction] = useState<'send' | 'save' | null>(null);
 
   // Use device screen aspect ratio (how lockscreen actually appears)
   const screenAspectRatio = SCREEN_WIDTH / SCREEN_HEIGHT;
@@ -123,50 +130,38 @@ export const SharedCanvasScreen: React.FC<SharedCanvasScreenProps> = ({
     const setupSubscription = async () => {
       myDeviceId = await getDeviceId();
 
+      // Start foreground service to prevent Samsung from freezing the app
+      console.log(`[${Date.now()}] Starting sync service to prevent app freeze...`);
+      const serviceStarted = await startSyncService();
+      console.log(`[${Date.now()}] Sync service started: ${serviceStarted}`);
+
       const unsubscribe = subscribeToDrawings(pairingId, async (drawing) => {
+        const callbackTime = Date.now();
         try {
-          console.log('Subscription callback fired, senderId:', drawing.senderId, 'myDeviceId:', myDeviceId);
+          console.log(`[${callbackTime}] SharedCanvasScreen callback START - senderId: ${drawing.senderId}, myDeviceId: ${myDeviceId}`);
 
           // Only load if it's from partner, not from me
           if (drawing.senderId !== myDeviceId && drawing.strokes.length > 0) {
-            console.log('Received drawing from partner:', drawing.strokes.length, 'strokes');
+            console.log(`[${Date.now()}] Received drawing from partner: ${drawing.strokes.length} strokes`);
             setStrokes(drawing.strokes);
 
             // Auto-apply if setting is enabled
             if (autoApplyDrawings) {
+              console.log(`[${Date.now()}] autoApplyDrawings=true, calling applyReceivedDrawing...`);
               // Use native compositing to apply drawing to lockscreen (force apply since this is a real-time update)
               const success = await applyReceivedDrawing(pairingId, true);
-              console.log('Apply result:', success);
-              Alert.alert(
-                'New Drawing!',
-                success
-                  ? `${drawing.senderName} sent you a drawing! Applied to lockscreen.`
-                  : `${drawing.senderName} sent you a drawing! (Could not apply - make sure you have a background image selected)`
-              );
+              console.log(`[${Date.now()}] applyReceivedDrawing returned: ${success}`);
+              // Silent apply - no popup
             } else {
-              // Show alert with option to apply to lockscreen
-              Alert.alert(
-                'New Drawing!',
-                `${drawing.senderName} sent you a drawing!`,
-                [
-                  { text: 'View Only', style: 'cancel' },
-                  {
-                    text: 'Apply to Lockscreen',
-                    onPress: async () => {
-                      const success = await applyReceivedDrawing(pairingId, true);
-                      if (!success) {
-                        Alert.alert('Error', 'Could not apply to lockscreen. Make sure you have a background image selected.');
-                      }
-                    },
-                  },
-                ]
-              );
+              // Just apply without popup when auto-apply is disabled
+              await applyReceivedDrawing(pairingId, true);
             }
           } else {
-            console.log('Skipping drawing - either own drawing or no strokes');
+            console.log(`[${Date.now()}] Skipping drawing - either own drawing (${drawing.senderId === myDeviceId}) or no strokes (${drawing.strokes.length})`);
           }
+          console.log(`[${Date.now()}] SharedCanvasScreen callback END`);
         } catch (error) {
-          console.error('Error in subscription callback:', error);
+          console.error(`[${Date.now()}] Error in subscription callback:`, error);
         }
       });
 
@@ -180,6 +175,10 @@ export const SharedCanvasScreen: React.FC<SharedCanvasScreenProps> = ({
 
     return () => {
       if (unsubscribe) unsubscribe();
+      // Stop the sync service when leaving the screen
+      stopSyncService().then(() => {
+        console.log(`[${Date.now()}] Sync service stopped on cleanup`);
+      });
     };
   }, [isPaired, pairingId, setStrokes, autoApplyDrawings]);
 
@@ -237,41 +236,49 @@ export const SharedCanvasScreen: React.FC<SharedCanvasScreenProps> = ({
     [setSelectedTool, clearCanvas]
   );
 
+  const handleConfirmAction = useCallback(() => {
+    if (dontShowAgain) {
+      setSkipSendConfirmation(true);
+    }
+    setShowConfirmModal(false);
+
+    if (pendingAction === 'send') {
+      sendToPartner();
+    } else if (pendingAction === 'save') {
+      saveToLockscreen();
+    }
+    setPendingAction(null);
+    setDontShowAgain(false);
+  }, [dontShowAgain, pendingAction, setSkipSendConfirmation]);
+
+  const handleCancelAction = useCallback(() => {
+    setShowConfirmModal(false);
+    setPendingAction(null);
+    setDontShowAgain(false);
+  }, []);
+
   const handleDone = useCallback(async () => {
     if (strokes.length === 0) {
       navigation.goBack();
       return;
     }
 
-    // Build options based on pairing status
-    const options: any[] = [
-      {
-        text: 'Discard',
-        style: 'destructive',
-        onPress: () => navigation.goBack(),
-      },
-      {
-        text: 'Save to My Lockscreen',
-        onPress: () => saveToLockscreen(),
-      },
-    ];
+    // If paired, send to partner; otherwise save to own lockscreen
+    const action = isPaired && pairingId ? 'send' : 'save';
 
-    // Add send to partner option if paired
-    if (isPaired && pairingId) {
-      options.push({
-        text: `Send to ${partnerName || 'Partner'}`,
-        onPress: () => sendToPartner(),
-      });
+    if (skipSendConfirmation) {
+      // Skip confirmation modal
+      if (action === 'send') {
+        sendToPartner();
+      } else {
+        saveToLockscreen();
+      }
+    } else {
+      // Show confirmation modal
+      setPendingAction(action);
+      setShowConfirmModal(true);
     }
-
-    Alert.alert(
-      'Save Drawing',
-      isPaired
-        ? 'What would you like to do with your drawing?'
-        : 'Would you like to set this as your lockscreen?',
-      options
-    );
-  }, [strokes, navigation, isPaired, pairingId, partnerName]);
+  }, [strokes, navigation, isPaired, pairingId, skipSendConfirmation]);
 
   const sendToPartner = async () => {
     if (!pairingId || !canvasRef.current) {
@@ -365,6 +372,48 @@ export const SharedCanvasScreen: React.FC<SharedCanvasScreenProps> = ({
   return (
     <GestureHandlerRootView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor={colors.backgroundDark} />
+
+      {/* Confirmation Modal */}
+      <Modal
+        visible={showConfirmModal}
+        transparent
+        animationType="fade"
+        onRequestClose={handleCancelAction}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Update Lockscreen</Text>
+            <Text style={styles.modalMessage}>
+              {pendingAction === 'send'
+                ? "This will update your lockscreen and your partner's lockscreen."
+                : "This will update your lockscreen."}
+            </Text>
+
+            {/* Checkbox */}
+            <Pressable
+              style={styles.checkboxRow}
+              onPress={() => setDontShowAgain(!dontShowAgain)}
+            >
+              <View style={[styles.checkbox, dontShowAgain && styles.checkboxChecked]}>
+                {dontShowAgain && (
+                  <MaterialIcons name="check" size={16} color={colors.white} />
+                )}
+              </View>
+              <Text style={styles.checkboxLabel}>Don't show this again</Text>
+            </Pressable>
+
+            {/* Buttons */}
+            <View style={styles.modalButtons}>
+              <Pressable style={styles.modalButtonCancel} onPress={handleCancelAction}>
+                <Text style={styles.modalButtonCancelText}>Cancel</Text>
+              </Pressable>
+              <Pressable style={styles.modalButtonConfirm} onPress={handleConfirmAction}>
+                <Text style={styles.modalButtonConfirmText}>Continue</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* Header */}
       <View style={{ paddingTop: insets.top }}>
@@ -481,6 +530,7 @@ export const SharedCanvasScreen: React.FC<SharedCanvasScreenProps> = ({
           onUndo={undoLastStroke}
           onDone={handleDone}
           canUndo={strokes.length > 0}
+          doneLabel={isPaired ? 'Send' : 'Save'}
         />
       </View>
     </GestureHandlerRootView>
@@ -577,5 +627,82 @@ const styles = StyleSheet.create({
   },
   colorPickerContainer: {
     paddingVertical: spacing.xs,
+  },
+  // Modal styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.lg,
+  },
+  modalContent: {
+    backgroundColor: colors.cardDark,
+    borderRadius: borderRadius.lg,
+    padding: spacing.xl,
+    width: '100%',
+    maxWidth: 340,
+  },
+  modalTitle: {
+    ...typography.h2,
+    color: colors.textPrimary,
+    textAlign: 'center',
+    marginBottom: spacing.md,
+  },
+  modalMessage: {
+    ...typography.body,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginBottom: spacing.lg,
+  },
+  checkboxRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: spacing.xl,
+  },
+  checkbox: {
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: colors.textSecondary,
+    marginRight: spacing.sm,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  checkboxChecked: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  checkboxLabel: {
+    ...typography.body,
+    color: colors.textSecondary,
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    gap: spacing.md,
+  },
+  modalButtonCancel: {
+    flex: 1,
+    paddingVertical: spacing.md,
+    borderRadius: borderRadius.full,
+    borderWidth: 1,
+    borderColor: colors.textSecondary,
+    alignItems: 'center',
+  },
+  modalButtonCancelText: {
+    ...typography.buttonText,
+    color: colors.textSecondary,
+  },
+  modalButtonConfirm: {
+    flex: 1,
+    paddingVertical: spacing.md,
+    borderRadius: borderRadius.full,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+  },
+  modalButtonConfirmText: {
+    ...typography.buttonText,
+    color: colors.white,
   },
 });

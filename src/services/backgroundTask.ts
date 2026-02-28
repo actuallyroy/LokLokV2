@@ -58,13 +58,17 @@ export async function registerBackgroundNotificationHandler(): Promise<void> {
  * Tracks last applied drawing to avoid re-applying the same drawing
  */
 export async function applyReceivedDrawing(pairingId: string, forceApply: boolean = false): Promise<boolean> {
+  const startTime = Date.now();
+  console.log(`[${startTime}] applyReceivedDrawing START - pairingId: ${pairingId}, forceApply: ${forceApply}`);
+
   try {
-    console.log('Applying received drawing for pairing:', pairingId);
+    console.log(`[${Date.now()}] Fetching drawing from Firestore...`);
 
     // Get the drawing data from Firestore
     const drawingData = await getLatestDrawing(pairingId);
+    console.log(`[${Date.now()}] getLatestDrawing returned:`, drawingData ? `${drawingData.strokes?.length} strokes` : 'null');
     if (!drawingData) {
-      console.log('No drawing data found');
+      console.log(`[${Date.now()}] No drawing data found - RETURNING FALSE`);
       return false;
     }
 
@@ -109,7 +113,8 @@ export async function applyReceivedDrawing(pairingId: string, forceApply: boolea
       return false;
     }
 
-    console.log(`Compositing ${drawingData.strokes.length} strokes onto local background`);
+    console.log(`[${Date.now()}] Compositing ${drawingData.strokes.length} strokes onto local background`);
+    console.log(`[${Date.now()}] Calling compositeAndSetLockscreen...`);
 
     // Use native compositing to draw strokes on background and set lockscreen
     const success = await compositeAndSetLockscreen(
@@ -119,19 +124,21 @@ export async function applyReceivedDrawing(pairingId: string, forceApply: boolea
       drawingData.canvasHeight
     );
 
+    console.log(`[${Date.now()}] compositeAndSetLockscreen returned: ${success}`);
+
     if (success) {
       // Save the timestamp of this drawing so we don't re-apply it
       const drawingTime = drawingData.timestamp?.toMillis?.() || Date.now();
       await AsyncStorage.setItem(STORAGE_KEYS.LAST_APPLIED_DRAWING_TIME, drawingTime.toString());
 
-      console.log('Drawing applied to lockscreen successfully via native compositing');
+      console.log(`[${Date.now()}] Drawing applied to lockscreen successfully via native compositing`);
       return true;
     }
 
-    console.log('Failed to apply drawing via native compositing');
+    console.log(`[${Date.now()}] Failed to apply drawing via native compositing`);
     return false;
   } catch (error) {
-    console.error('Error applying received drawing:', error);
+    console.error(`[${Date.now()}] Error applying received drawing:`, error);
     return false;
   }
 }
