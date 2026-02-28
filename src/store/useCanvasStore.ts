@@ -10,6 +10,7 @@ interface CanvasState {
   currentColor: string;
   brushSize: number;
   selectedTool: Tool;
+  customColors: string[];
 
   // Actions
   setStrokes: (strokes: Stroke[]) => void;
@@ -19,6 +20,8 @@ interface CanvasState {
   setCurrentColor: (color: string) => void;
   setBrushSize: (size: number) => void;
   setSelectedTool: (tool: Tool) => void;
+  addCustomColor: (color: string) => void;
+  removeCustomColor: (color: string) => void;
 }
 
 export const useCanvasStore = create<CanvasState>()(
@@ -29,6 +32,7 @@ export const useCanvasStore = create<CanvasState>()(
       currentColor: colors.canvasColors[0],
       brushSize: 15,
       selectedTool: 'brush',
+      customColors: [],
 
       // Actions
       setStrokes: (strokes) => set({ strokes }),
@@ -48,6 +52,19 @@ export const useCanvasStore = create<CanvasState>()(
       setBrushSize: (size) => set({ brushSize: size }),
 
       setSelectedTool: (tool) => set({ selectedTool: tool }),
+
+      addCustomColor: (color) =>
+        set((state) => {
+          // Avoid duplicates and limit to 10 custom colors
+          if (state.customColors.includes(color)) return state;
+          const newColors = [...state.customColors, color].slice(-10);
+          return { customColors: newColors };
+        }),
+
+      removeCustomColor: (color) =>
+        set((state) => ({
+          customColors: state.customColors.filter((c) => c !== color),
+        })),
     }),
     {
       name: 'loklok-canvas-storage',

@@ -6,6 +6,8 @@ import {
   onSnapshot,
   serverTimestamp,
   Timestamp,
+  updateDoc,
+  deleteDoc,
 } from 'firebase/firestore';
 import { getFirestoreDb } from './firebase';
 import { Stroke } from '../components/canvas';
@@ -264,13 +266,75 @@ export function listenForPairing(
 
       // Clean up the pending pairing document
       try {
-        const { deleteDoc } = await import('firebase/firestore');
         await deleteDoc(pendingRef);
       } catch (e) {
         console.log('Could not delete pending pairing:', e);
       }
     }
   });
+
+  return unsubscribe;
+}
+
+/**
+ * Notify partner of disconnection by updating Firebase pairing status
+ */
+export async function notifyPartnerOfDisconnect(
+  pairingId: string,
+  myDeviceId: string
+): Promise<boolean> {
+  try {
+    const db = getFirestoreDb();
+    const pairingRef = doc(db, 'pairings', pairingId);
+
+    // Update the pairing document with disconnection info
+    await updateDoc(pairingRef, {
+      status: 'disconnected',
+      disconnectedBy: myDeviceId,
+      disconnectedAt: serverTimestamp(),
+    });
+
+    console.log('Partner notified of disconnection');
+    return true;
+  } catch (error) {
+    console.error('Error notifying partner of disconnect:', error);
+    return false;
+  }
+}
+
+/**
+ * Listen for pairing status changes (e.g., when partner disconnects)
+ */
+export function listenForPairingStatus(
+  pairingId: string,
+  myDeviceId: string,
+  onPartnerDisconnected: () => void
+): () => void {
+  const db = getFirestoreDb();
+  const pairingRef = doc(db, 'pairings', pairingId);
+
+  console.log('Listening for pairing status changes:', pairingId);
+
+  const unsubscribe = onSnapshot(
+    pairingRef,
+    (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.data();
+        // Check if pairing was disconnected by the other device
+        if (data.status === 'disconnected' && data.disconnectedBy !== myDeviceId) {
+          console.log('Partner disconnected, notifying...');
+          onPartnerDisconnected();
+        }
+      } else {
+        // Document was deleted - partner disconnected
+        console.log('Pairing document deleted, partner disconnected');
+        onPartnerDisconnected();
+      }
+    },
+    (error) => {
+      console.error('Error listening to pairing status:', error);
+    }
+  );
 
   return unsubscribe;
 }

@@ -11,6 +11,7 @@ import {
   ActivityIndicator,
   Modal,
   Pressable,
+  ScrollView,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -42,6 +43,34 @@ const { width: PIXEL_WIDTH, height: PIXEL_HEIGHT } = Dimensions.get('screen');
 const CAPTURE_WIDTH = Math.round(PIXEL_WIDTH);
 const CAPTURE_HEIGHT = Math.round(PIXEL_HEIGHT);
 
+// Extended color palette for the color picker modal
+const COLOR_PALETTE = [
+  // Row 1 - Reds/Pinks
+  '#FF0000', '#FF4444', '#FF6B6B', '#FF8A8A', '#FFB3B3',
+  '#E91E63', '#F06292', '#F48FB1', '#F8BBD9', '#FCE4EC',
+  // Row 2 - Oranges/Yellows
+  '#FF5722', '#FF7043', '#FF8A65', '#FFAB91', '#FFCCBC',
+  '#FF9800', '#FFB74D', '#FFCC80', '#FFE0B2', '#FFF3E0',
+  // Row 3 - Yellows/Greens
+  '#FFC107', '#FFD54F', '#FFE082', '#FFECB3', '#FFF8E1',
+  '#FFEB3B', '#FFF176', '#FFF59D', '#FFF9C4', '#FFFDE7',
+  // Row 4 - Greens
+  '#4CAF50', '#66BB6A', '#81C784', '#A5D6A7', '#C8E6C9',
+  '#8BC34A', '#AED581', '#C5E1A5', '#DCEDC8', '#F1F8E9',
+  // Row 5 - Teals/Cyans
+  '#009688', '#26A69A', '#4DB6AC', '#80CBC4', '#B2DFDB',
+  '#00BCD4', '#26C6DA', '#4DD0E1', '#80DEEA', '#B2EBF2',
+  // Row 6 - Blues
+  '#2196F3', '#42A5F5', '#64B5F6', '#90CAF9', '#BBDEFB',
+  '#3F51B5', '#5C6BC0', '#7986CB', '#9FA8DA', '#C5CAE9',
+  // Row 7 - Purples
+  '#9C27B0', '#AB47BC', '#BA68C8', '#CE93D8', '#E1BEE7',
+  '#673AB7', '#7E57C2', '#9575CD', '#B39DDB', '#D1C4E9',
+  // Row 8 - Neutrals
+  '#FFFFFF', '#F5F5F5', '#E0E0E0', '#BDBDBD', '#9E9E9E',
+  '#757575', '#616161', '#424242', '#212121', '#000000',
+];
+
 type SharedCanvasScreenNavigationProp = NativeStackNavigationProp<
   RootStackParamList,
   'SharedCanvas'
@@ -70,6 +99,9 @@ export const SharedCanvasScreen: React.FC<SharedCanvasScreenProps> = ({
   // Toast notification state
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
+
+  // Color picker modal state
+  const [showColorPickerModal, setShowColorPickerModal] = useState(false);
 
   const showToastNotification = useCallback((message: string) => {
     setToastMessage(message);
@@ -223,12 +255,15 @@ export const SharedCanvasScreen: React.FC<SharedCanvasScreenProps> = ({
     currentColor,
     brushSize,
     selectedTool,
+    customColors,
     setStrokes,
     setCurrentColor,
     setBrushSize,
     setSelectedTool,
     undoLastStroke,
     clearCanvas,
+    addCustomColor,
+    removeCustomColor,
   } = useCanvasStore();
 
   const { isPartnerDrawing, isPaired, pairingId, partnerName, partnerFcmToken } = usePairingStore();
@@ -250,6 +285,16 @@ export const SharedCanvasScreen: React.FC<SharedCanvasScreenProps> = ({
     },
     [setSelectedTool, clearCanvas]
   );
+
+  const handleAddColor = useCallback(() => {
+    setShowColorPickerModal(true);
+  }, []);
+
+  const handleSelectPaletteColor = useCallback((color: string) => {
+    addCustomColor(color);
+    setCurrentColor(color);
+    setShowColorPickerModal(false);
+  }, [addCustomColor, setCurrentColor]);
 
   const handleConfirmAction = useCallback(() => {
     if (dontShowAgain) {
@@ -434,6 +479,58 @@ export const SharedCanvasScreen: React.FC<SharedCanvasScreenProps> = ({
         </View>
       )}
 
+      {/* Color Picker Modal */}
+      <Modal
+        visible={showColorPickerModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowColorPickerModal(false)}
+      >
+        <View style={styles.colorModalOverlay}>
+          <View style={styles.colorModalContent}>
+            {/* Header */}
+            <View style={styles.colorModalHeader}>
+              <Text style={styles.colorModalTitle}>Choose a Color</Text>
+              <TouchableOpacity
+                onPress={() => setShowColorPickerModal(false)}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <MaterialIcons name="close" size={24} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Color Grid */}
+            <ScrollView
+              style={styles.colorGridScroll}
+              showsVerticalScrollIndicator={false}
+            >
+              <View style={styles.colorGrid}>
+                {COLOR_PALETTE.map((color, index) => (
+                  <TouchableOpacity
+                    key={`${color}-${index}`}
+                    style={[
+                      styles.colorGridItem,
+                      { backgroundColor: color },
+                      color === '#FFFFFF' && styles.colorGridItemWhite,
+                    ]}
+                    onPress={() => handleSelectPaletteColor(color)}
+                    activeOpacity={0.7}
+                  />
+                ))}
+              </View>
+            </ScrollView>
+
+            {/* Cancel Button */}
+            <TouchableOpacity
+              style={styles.colorModalCancelButton}
+              onPress={() => setShowColorPickerModal(false)}
+            >
+              <Text style={styles.colorModalCancelText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
       {/* Header */}
       <View style={{ paddingTop: insets.top }}>
         <Header
@@ -539,6 +636,9 @@ export const SharedCanvasScreen: React.FC<SharedCanvasScreenProps> = ({
           <ColorPicker
             selectedColor={currentColor}
             onColorSelect={setCurrentColor}
+            onAddPress={handleAddColor}
+            onDeleteColor={removeCustomColor}
+            customColors={customColors}
           />
         </View>
 
@@ -747,5 +847,57 @@ const styles = StyleSheet.create({
     ...typography.body,
     color: colors.white,
     flex: 1,
+  },
+  // Color Picker Modal styles
+  colorModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.85)',
+    justifyContent: 'flex-end',
+  },
+  colorModalContent: {
+    backgroundColor: colors.cardDark,
+    borderTopLeftRadius: borderRadius.xl,
+    borderTopRightRadius: borderRadius.xl,
+    padding: spacing.xl,
+    paddingBottom: spacing.xxxl,
+    maxHeight: '80%',
+  },
+  colorModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.lg,
+  },
+  colorModalTitle: {
+    ...typography.h3,
+    color: colors.textPrimary,
+  },
+  colorGridScroll: {
+    maxHeight: 300,
+  },
+  colorGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: spacing.sm,
+  },
+  colorGridItem: {
+    width: 28,
+    height: 28,
+    borderRadius: 6,
+  },
+  colorGridItemWhite: {
+    borderWidth: 1,
+    borderColor: colors.textTertiary,
+  },
+  colorModalCancelButton: {
+    marginTop: spacing.xl,
+    paddingVertical: spacing.md,
+    alignItems: 'center',
+  },
+  colorModalCancelText: {
+    ...typography.button,
+    color: colors.textSecondary,
   },
 });

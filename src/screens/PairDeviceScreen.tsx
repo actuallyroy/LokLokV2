@@ -1,5 +1,5 @@
 import React, { useMemo, useRef, useEffect, useState } from 'react';
-import { View, Text, StyleSheet, StatusBar, TouchableOpacity, Alert, Image } from 'react-native';
+import { View, Text, StyleSheet, StatusBar, TouchableOpacity, Alert, Image, Modal, TextInput } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import QRCodeStyled from 'react-native-qrcode-styled';
@@ -13,7 +13,7 @@ import { RootStackParamList } from '../navigation/AppNavigator';
 import { usePairingStore, useSettingsStore } from '../store';
 import { registerForPushNotifications } from '../services/notifications';
 import { getDeviceId, saveDeviceId } from '../services/backgroundTask';
-import { listenForPairing } from '../services/strokeSync';
+import { listenForPairing, notifyPartnerOfDisconnect } from '../services/strokeSync';
 
 type PairDeviceScreenNavigationProp = NativeStackNavigationProp<
   RootStackParamList,
@@ -27,12 +27,23 @@ interface PairDeviceScreenProps {
 export const PairDeviceScreen: React.FC<PairDeviceScreenProps> = ({
   navigation,
 }) => {
-  const { isPaired, partnerName, disconnect, setPaired } = usePairingStore();
-  const { hasCompletedOnboarding, setOnboardingComplete, userName } = useSettingsStore();
+  const { isPaired, partnerName, pairingId, myDeviceId, disconnect, setPaired, setMyDeviceId } = usePairingStore();
+  const { hasCompletedOnboarding, setOnboardingComplete, userName, setUserName } = useSettingsStore();
   const insets = useSafeAreaInsets();
   const viewShotRef = useRef<ViewShot>(null);
   const [deviceId, setDeviceIdState] = useState<string | null>(null);
   const [fcmToken, setFcmToken] = useState<string | null>(null);
+  const [showNicknameModal, setShowNicknameModal] = useState(false);
+  const [nicknameInput, setNicknameInput] = useState('');
+  const [hasSetNickname, setHasSetNickname] = useState(false);
+
+  // Check if user needs to set nickname
+  useEffect(() => {
+    const defaultNames = ['Sarah Jenkins', 'Partner', ''];
+    if (!hasSetNickname && !isPaired && (defaultNames.includes(userName) || !userName)) {
+      setShowNicknameModal(true);
+    }
+  }, [userName, hasSetNickname, isPaired]);
 
   // Initialize device ID and FCM token
   useEffect(() => {
@@ -44,13 +55,24 @@ export const PairDeviceScreen: React.FC<PairDeviceScreenProps> = ({
         await saveDeviceId(id);
       }
       setDeviceIdState(id);
+      // Also store in pairing store for disconnect sync
+      setMyDeviceId(id);
 
       // Get FCM token
       const token = await registerForPushNotifications();
       setFcmToken(token);
     };
     init();
-  }, []);
+  }, [setMyDeviceId]);
+
+  const handleSaveNickname = () => {
+    const trimmedName = nicknameInput.trim();
+    if (trimmedName.length > 0) {
+      setUserName(trimmedName);
+      setHasSetNickname(true);
+      setShowNicknameModal(false);
+    }
+  };
 
   // Listen for pairing requests (when someone scans our code)
   useEffect(() => {
@@ -136,7 +158,14 @@ export const PairDeviceScreen: React.FC<PairDeviceScreenProps> = ({
         {
           text: 'Disconnect',
           style: 'destructive',
-          onPress: () => disconnect(),
+          onPress: async () => {
+            // Notify partner via Firebase first
+            if (pairingId && myDeviceId) {
+              await notifyPartnerOfDisconnect(pairingId, myDeviceId);
+            }
+            // Then clear local state
+            disconnect();
+          },
         },
       ]
     );
@@ -320,6 +349,42 @@ export const PairDeviceScreen: React.FC<PairDeviceScreenProps> = ({
           </View>
         </ViewShot>
       </View>
+
+      {/* Nickname Modal */}
+      <Modal
+        visible={showNicknameModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {}}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>What's your nickname?</Text>
+            <Text style={styles.modalSubtitle}>
+              This is how your partner will see you
+            </Text>
+            <TextInput
+              style={styles.nicknameInput}
+              value={nicknameInput}
+              onChangeText={setNicknameInput}
+              placeholder="Enter your nickname"
+              placeholderTextColor={colors.textTertiary}
+              autoFocus
+              maxLength={20}
+            />
+            <TouchableOpacity
+              style={[
+                styles.saveNicknameButton,
+                !nicknameInput.trim() && styles.saveNicknameButtonDisabled,
+              ]}
+              onPress={handleSaveNickname}
+              disabled={!nicknameInput.trim()}
+            >
+              <Text style={styles.saveNicknameButtonText}>Continue</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 };
@@ -529,5 +594,60 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
     textAlign: 'center',
     lineHeight: 20,
+  },
+  // Nickname modal styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.xxl,
+  },
+  modalContent: {
+    backgroundColor: colors.cardDark,
+    borderRadius: borderRadius.lg,
+    padding: spacing.xxl,
+    width: '100%',
+    maxWidth: 320,
+    alignItems: 'center',
+  },
+  modalTitle: {
+    ...typography.h3,
+    color: colors.textPrimary,
+    marginBottom: spacing.sm,
+    textAlign: 'center',
+  },
+  modalSubtitle: {
+    ...typography.body,
+    color: colors.textSecondary,
+    marginBottom: spacing.xl,
+    textAlign: 'center',
+  },
+  nicknameInput: {
+    ...typography.body,
+    color: colors.textPrimary,
+    backgroundColor: colors.cardDarker,
+    borderRadius: borderRadius.default,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    width: '100%',
+    marginBottom: spacing.lg,
+    textAlign: 'center',
+    fontSize: 18,
+  },
+  saveNicknameButton: {
+    backgroundColor: colors.primary,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.xxl,
+    borderRadius: borderRadius.full,
+    width: '100%',
+    alignItems: 'center',
+  },
+  saveNicknameButtonDisabled: {
+    opacity: 0.5,
+  },
+  saveNicknameButtonText: {
+    ...typography.button,
+    color: colors.white,
   },
 });

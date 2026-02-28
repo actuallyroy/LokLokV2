@@ -1,22 +1,25 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  SafeAreaView,
   ScrollView,
   TouchableOpacity,
   Alert,
   Linking,
   TextInput,
   Modal,
+  StatusBar,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import * as ImagePicker from 'expo-image-picker';
 import { Header, Toggle, Avatar, SettingsItem } from '../components/common';
 import { colors, typography, spacing, borderRadius } from '../theme';
 import { RootStackParamList } from '../navigation/AppNavigator';
-import { useSettingsStore, usePairingStore, BrushStyle } from '../store';
+import { useSettingsStore, usePairingStore } from '../store';
+import { notifyPartnerOfDisconnect } from '../services/strokeSync';
 
 type SettingsScreenNavigationProp = NativeStackNavigationProp<
   RootStackParamList,
@@ -27,33 +30,26 @@ interface SettingsScreenProps {
   navigation: SettingsScreenNavigationProp;
 }
 
-const brushStyles: { id: BrushStyle; label: string }[] = [
-  { id: 'neon', label: 'Neon Glow' },
-  { id: 'solid', label: 'Solid' },
-  { id: 'pencil', label: 'Pencil' },
-];
-
 export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   navigation,
 }) => {
+  const insets = useSafeAreaInsets();
   const {
     autoApplyDrawings,
     notificationAlerts,
-    defaultBrushStyle,
-    defaultInkColor,
     userName,
-    userEmail,
     userAvatar,
     setAutoApplyDrawings,
     setNotificationAlerts,
-    setDefaultBrushStyle,
     setUserName,
+    setUserProfile,
   } = useSettingsStore();
 
-  const { isPaired, partnerName, disconnect } = usePairingStore();
+  const { isPaired, partnerName, pairingId, myDeviceId, disconnect } = usePairingStore();
 
   const [isNameModalVisible, setIsNameModalVisible] = useState(false);
   const [newName, setNewName] = useState(userName);
+  const [showAutoApplyModal, setShowAutoApplyModal] = useState(false);
 
   const handleChangeName = useCallback(() => {
     setNewName(userName);
@@ -72,15 +68,11 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   const handleAutoApplyToggle = useCallback((enabled: boolean) => {
     setAutoApplyDrawings(enabled);
     if (enabled) {
-      Alert.alert(
-        'Auto-Apply Enabled',
-        'When your partner sends a drawing, it will automatically be set as your lockscreen wallpaper.',
-        [{ text: 'OK' }]
-      );
+      setShowAutoApplyModal(true);
     }
   }, [setAutoApplyDrawings]);
 
-  const handleDisconnect = useCallback(() => {
+  const handleDisconnect = useCallback(async () => {
     Alert.alert(
       'Disconnect Partner',
       `Are you sure you want to disconnect from ${partnerName || 'your partner'}? You'll need to pair again to share drawings.`,
@@ -89,70 +81,57 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
         {
           text: 'Disconnect',
           style: 'destructive',
-          onPress: () => {
+          onPress: async () => {
+            // Notify partner via Firebase first
+            if (pairingId && myDeviceId) {
+              await notifyPartnerOfDisconnect(pairingId, myDeviceId);
+            }
+            // Then clear local state
             disconnect();
             Alert.alert('Disconnected', 'You have been disconnected from your partner.');
           },
         },
       ]
     );
-  }, [partnerName, disconnect]);
+  }, [partnerName, pairingId, myDeviceId, disconnect]);
 
-  const handleLogout = useCallback(() => {
-    Alert.alert(
-      'Log Out',
-      'Are you sure you want to log out?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Log Out',
-          style: 'destructive',
-          onPress: () => {
-            console.log('Logging out...');
-            // TODO: Implement logout
-          },
-        },
-      ]
-    );
+  const handleEditAvatar = useCallback(async () => {
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert(
+          'Permission Required',
+          'Please grant access to your photo library to change your avatar.'
+        );
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        setUserProfile(userName, '', result.assets[0].uri);
+      }
+    } catch (error) {
+      console.error('Error picking avatar:', error);
+      Alert.alert('Error', 'Failed to update avatar. Please try again.');
+    }
+  }, [userName, setUserProfile]);
+
+  const handleSupport = useCallback(() => {
+    Linking.openURL('mailto:support@loklok.app?subject=LokLok Support Request');
   }, []);
 
-  const renderBrushStylePreview = (style: BrushStyle, isSelected: boolean) => {
-    return (
-      <View
-        style={[
-          styles.brushStyleItem,
-          isSelected && styles.brushStyleItemSelected,
-        ]}
-      >
-        <View style={styles.brushPreviewContainer}>
-          {style === 'neon' && (
-            <View style={styles.neonBrushPreview}>
-              <View style={styles.neonBrushLine} />
-            </View>
-          )}
-          {style === 'solid' && (
-            <View style={styles.solidBrushPreview}>
-              <View style={styles.solidBrushLine} />
-            </View>
-          )}
-          {style === 'pencil' && (
-            <View style={styles.pencilBrushPreview}>
-              {[...Array(7)].map((_, i) => (
-                <View key={i} style={styles.pencilDot} />
-              ))}
-            </View>
-          )}
-        </View>
-        <Text style={[styles.brushStyleLabel, isSelected && styles.brushStyleLabelSelected]}>
-          {brushStyles.find((b) => b.id === style)?.label}
-        </Text>
-      </View>
-    );
-  };
-
   return (
-    <SafeAreaView style={styles.container}>
-      <Header title="Settings" onBack={() => navigation.goBack()} />
+    <View style={styles.container}>
+      <StatusBar barStyle="light-content" backgroundColor={colors.backgroundDark} />
+      <View style={{ paddingTop: insets.top }}>
+        <Header title="Settings" onBack={() => navigation.goBack()} />
+      </View>
 
       <ScrollView
         style={styles.scrollView}
@@ -165,13 +144,12 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
             source={userAvatar || undefined}
             size={100}
             showEditBadge
-            onEditPress={() => console.log('Edit avatar')}
+            onEditPress={handleEditAvatar}
           />
           <TouchableOpacity onPress={handleChangeName} style={styles.nameContainer}>
             <Text style={styles.userName}>{userName}</Text>
             <MaterialIcons name="edit" size={16} color={colors.textSecondary} />
           </TouchableOpacity>
-          <Text style={styles.userEmail}>{userEmail}</Text>
 
           {/* Partner Status */}
           {isPaired && (
@@ -202,10 +180,6 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                 <Text style={styles.profileActionTextDark}>Disconnect</Text>
               </TouchableOpacity>
             )}
-            <TouchableOpacity style={styles.profileActionButtonDark}>
-              <MaterialIcons name="share" size={18} color={colors.textPrimary} />
-              <Text style={styles.profileActionTextDark}>Share Profile</Text>
-            </TouchableOpacity>
           </View>
         </View>
 
@@ -255,68 +229,10 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
           </View>
         </View>
 
-        {/* Drawing Tools Section */}
+        {/* About Section */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>DRAWING TOOLS</Text>
+          <Text style={styles.sectionTitle}>ABOUT</Text>
           <View style={styles.sectionContent}>
-            <View style={styles.brushStyleHeader}>
-              <View style={styles.brushStyleIconContainer}>
-                <MaterialIcons name="brush" size={20} color={colors.primary} />
-              </View>
-              <Text style={styles.brushStyleTitle}>Default Brush Style</Text>
-            </View>
-
-            {/* Brush Style Options */}
-            <View style={styles.brushStyleOptions}>
-              {brushStyles.map((style) => (
-                <TouchableOpacity
-                  key={style.id}
-                  onPress={() => setDefaultBrushStyle(style.id)}
-                  activeOpacity={0.7}
-                >
-                  {renderBrushStylePreview(style.id, defaultBrushStyle === style.id)}
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            <SettingsItem
-              icon="palette"
-              iconColor="#4CAF50"
-              iconBackgroundColor="rgba(76, 175, 80, 0.15)"
-              title="Default Ink Color"
-              rightElement={
-                <View style={styles.colorPreviewRow}>
-                  <View
-                    style={[
-                      styles.colorPreview,
-                      { backgroundColor: defaultInkColor },
-                    ]}
-                  />
-                  <MaterialIcons
-                    name="chevron-right"
-                    size={24}
-                    color={colors.textTertiary}
-                  />
-                </View>
-              }
-              onPress={() => console.log('Select default color')}
-            />
-          </View>
-        </View>
-
-        {/* Account Section */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>ACCOUNT</Text>
-          <View style={styles.sectionContent}>
-            <SettingsItem
-              icon="manage-accounts"
-              iconColor="#2196F3"
-              iconBackgroundColor="rgba(33, 150, 243, 0.15)"
-              title="Account Management"
-              subtitle="Manage your account settings"
-              showChevron
-              onPress={() => console.log('Account management')}
-            />
             <SettingsItem
               icon="privacy-tip"
               iconColor="#FF9800"
@@ -333,14 +249,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
               title="Support & FAQ"
               subtitle="Get help or report an issue"
               showChevron
-              onPress={() => console.log('Support')}
-            />
-            <SettingsItem
-              icon="logout"
-              iconColor={colors.primary}
-              iconBackgroundColor="rgba(244, 71, 37, 0.15)"
-              title="Log Out"
-              onPress={handleLogout}
+              onPress={handleSupport}
             />
           </View>
         </View>
@@ -386,7 +295,48 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
           </View>
         </View>
       </Modal>
-    </SafeAreaView>
+
+      {/* Auto-Apply Info Modal */}
+      <Modal
+        visible={showAutoApplyModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowAutoApplyModal(false)}
+      >
+        <View style={styles.autoApplyModalOverlay}>
+          <View style={styles.autoApplyModalContent}>
+            {/* Icon */}
+            <View style={styles.autoApplyIconContainer}>
+              <MaterialIcons name="auto-awesome" size={32} color={colors.primary} />
+            </View>
+
+            {/* Title */}
+            <Text style={styles.autoApplyTitle}>Auto-Apply Enabled</Text>
+
+            {/* Description */}
+            <Text style={styles.autoApplyDescription}>
+              Your lockscreen will now automatically update whenever your partner sends you a new drawing.
+            </Text>
+
+            {/* Hint */}
+            <View style={styles.autoApplyHintContainer}>
+              <MaterialIcons name="info-outline" size={16} color={colors.textTertiary} />
+              <Text style={styles.autoApplyHint}>
+                You can disable this anytime from settings
+              </Text>
+            </View>
+
+            {/* Button */}
+            <TouchableOpacity
+              style={styles.autoApplyButton}
+              onPress={() => setShowAutoApplyModal(false)}
+            >
+              <Text style={styles.autoApplyButtonText}>Got it!</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+    </View>
   );
 };
 
@@ -409,11 +359,6 @@ const styles = StyleSheet.create({
   userName: {
     ...typography.h4,
     color: colors.textPrimary,
-  },
-  userEmail: {
-    ...typography.bodySmall,
-    color: colors.textTertiary,
-    marginTop: spacing.xs,
   },
   partnerBadge: {
     flexDirection: 'row',
@@ -489,101 +434,6 @@ const styles = StyleSheet.create({
     flex: 1,
     lineHeight: 18,
   },
-  brushStyleHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: spacing.lg,
-  },
-  brushStyleIconContainer: {
-    width: 40,
-    height: 40,
-    borderRadius: borderRadius.sm,
-    backgroundColor: 'rgba(244, 71, 37, 0.15)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: spacing.md,
-  },
-  brushStyleTitle: {
-    ...typography.body,
-    color: colors.textPrimary,
-    flex: 1,
-  },
-  brushStyleOptions: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-    marginBottom: spacing.lg,
-  },
-  brushStyleItem: {
-    flex: 1,
-    backgroundColor: colors.cardDarker,
-    borderRadius: borderRadius.md,
-    padding: spacing.md,
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: 'transparent',
-  },
-  brushStyleItemSelected: {
-    borderColor: colors.primary,
-  },
-  brushPreviewContainer: {
-    height: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: spacing.sm,
-  },
-  neonBrushPreview: {
-    width: '100%',
-    height: 20,
-    justifyContent: 'center',
-  },
-  neonBrushLine: {
-    height: 8,
-    backgroundColor: colors.primary,
-    borderRadius: 4,
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.8,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  solidBrushPreview: {
-    width: '100%',
-    height: 20,
-    justifyContent: 'center',
-  },
-  solidBrushLine: {
-    height: 6,
-    backgroundColor: colors.textSecondary,
-    borderRadius: 3,
-  },
-  pencilBrushPreview: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  pencilDot: {
-    width: 4,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: colors.textTertiary,
-  },
-  brushStyleLabel: {
-    ...typography.caption,
-    color: colors.textTertiary,
-  },
-  brushStyleLabelSelected: {
-    color: colors.primary,
-  },
-  colorPreviewRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  colorPreview: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-  },
   versionText: {
     ...typography.caption,
     color: colors.textTertiary,
@@ -656,6 +506,72 @@ const styles = StyleSheet.create({
   },
   modalButtonSaveText: {
     ...typography.buttonSmall,
+    color: colors.white,
+  },
+  // Auto-Apply Modal Styles
+  autoApplyModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.85)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.xxl,
+  },
+  autoApplyModalContent: {
+    backgroundColor: colors.cardDark,
+    borderRadius: borderRadius.lg,
+    padding: spacing.xxl,
+    width: '100%',
+    maxWidth: 300,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(244, 71, 37, 0.3)',
+  },
+  autoApplyIconContainer: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: 'rgba(244, 71, 37, 0.15)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: spacing.lg,
+  },
+  autoApplyTitle: {
+    ...typography.h3,
+    color: colors.textPrimary,
+    marginBottom: spacing.md,
+    textAlign: 'center',
+  },
+  autoApplyDescription: {
+    ...typography.body,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: spacing.lg,
+  },
+  autoApplyHintContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: borderRadius.sm,
+    marginBottom: spacing.xl,
+  },
+  autoApplyHint: {
+    ...typography.caption,
+    color: colors.textTertiary,
+  },
+  autoApplyButton: {
+    backgroundColor: colors.primary,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.xxl,
+    borderRadius: borderRadius.full,
+    width: '100%',
+    alignItems: 'center',
+  },
+  autoApplyButtonText: {
+    ...typography.button,
     color: colors.white,
   },
 });

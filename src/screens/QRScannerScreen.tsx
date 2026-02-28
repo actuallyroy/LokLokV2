@@ -8,6 +8,8 @@ import {
   Alert,
   Dimensions,
   ActivityIndicator,
+  Modal,
+  TextInput,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BarCodeScanner, BarCodeScannerResult } from 'expo-barcode-scanner';
@@ -39,14 +41,30 @@ export const QRScannerScreen: React.FC<QRScannerScreenProps> = ({
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const [scanned, setScanned] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [showNicknameModal, setShowNicknameModal] = useState(false);
+  const [nicknameInput, setNicknameInput] = useState('');
+  const [pendingQRData, setPendingQRData] = useState<string | null>(null);
   const insets = useSafeAreaInsets();
   const { setPaired } = usePairingStore();
-  const { setOnboardingComplete, userName } = useSettingsStore();
+  const { setOnboardingComplete, userName, setUserName } = useSettingsStore();
 
   useEffect(() => {
     const getBarCodeScannerPermissions = async () => {
-      const { status } = await BarCodeScanner.requestPermissionsAsync();
-      setHasPermission(status === 'granted');
+      try {
+        // First check if we already have permission
+        const { status: existingStatus } = await BarCodeScanner.getPermissionsAsync();
+        if (existingStatus === 'granted') {
+          setHasPermission(true);
+          return;
+        }
+
+        // Request permission if not already granted
+        const { status } = await BarCodeScanner.requestPermissionsAsync();
+        setHasPermission(status === 'granted');
+      } catch (error) {
+        console.error('Error getting camera permissions:', error);
+        setHasPermission(false);
+      }
     };
 
     getBarCodeScannerPermissions();
@@ -129,7 +147,27 @@ export const QRScannerScreen: React.FC<QRScannerScreenProps> = ({
   const handleBarCodeScanned = ({ data }: BarCodeScannerResult) => {
     if (scanned) return;
     setScanned(true);
-    processScannedData(data);
+
+    // Check if user needs to set nickname first
+    const defaultNames = ['Sarah Jenkins', 'Partner', ''];
+    if (defaultNames.includes(userName) || !userName) {
+      setPendingQRData(data);
+      setShowNicknameModal(true);
+    } else {
+      processScannedData(data);
+    }
+  };
+
+  const handleSaveNickname = () => {
+    const trimmedName = nicknameInput.trim();
+    if (trimmedName.length > 0) {
+      setUserName(trimmedName);
+      setShowNicknameModal(false);
+      if (pendingQRData) {
+        processScannedData(pendingQRData);
+        setPendingQRData(null);
+      }
+    }
   };
 
   const handleScanFromGallery = async () => {
@@ -179,8 +217,17 @@ export const QRScannerScreen: React.FC<QRScannerScreenProps> = ({
     return (
       <View style={styles.container}>
         <StatusBar barStyle="light-content" backgroundColor={colors.backgroundDark} />
-        <View style={styles.permissionContainer}>
-          <Text style={styles.permissionText}>Requesting camera permission...</Text>
+        <View style={[styles.permissionContainer, { paddingTop: insets.top }]}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={[styles.permissionText, { marginTop: spacing.lg }]}>
+            Requesting camera permission...
+          </Text>
+          <TouchableOpacity
+            style={styles.backButtonAlt}
+            onPress={() => navigation.goBack()}
+          >
+            <Text style={styles.backButtonAltText}>Go Back</Text>
+          </TouchableOpacity>
         </View>
       </View>
     );
@@ -283,6 +330,42 @@ export const QRScannerScreen: React.FC<QRScannerScreenProps> = ({
           <Text style={styles.processingText}>Connecting with partner...</Text>
         </View>
       )}
+
+      {/* Nickname Modal */}
+      <Modal
+        visible={showNicknameModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {}}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>What's your nickname?</Text>
+            <Text style={styles.modalSubtitle}>
+              This is how your partner will see you
+            </Text>
+            <TextInput
+              style={styles.nicknameInput}
+              value={nicknameInput}
+              onChangeText={setNicknameInput}
+              placeholder="Enter your nickname"
+              placeholderTextColor={colors.textTertiary}
+              autoFocus
+              maxLength={20}
+            />
+            <TouchableOpacity
+              style={[
+                styles.saveNicknameButton,
+                !nicknameInput.trim() && styles.saveNicknameButtonDisabled,
+              ]}
+              onPress={handleSaveNickname}
+              disabled={!nicknameInput.trim()}
+            >
+              <Text style={styles.saveNicknameButtonText}>Continue</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 };
@@ -449,6 +532,61 @@ const styles = StyleSheet.create({
   },
   processingText: {
     ...typography.h4,
+    color: colors.white,
+  },
+  // Nickname modal styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.xxl,
+  },
+  modalContent: {
+    backgroundColor: colors.cardDark,
+    borderRadius: borderRadius.lg,
+    padding: spacing.xxl,
+    width: '100%',
+    maxWidth: 320,
+    alignItems: 'center',
+  },
+  modalTitle: {
+    ...typography.h3,
+    color: colors.textPrimary,
+    marginBottom: spacing.sm,
+    textAlign: 'center',
+  },
+  modalSubtitle: {
+    ...typography.body,
+    color: colors.textSecondary,
+    marginBottom: spacing.xl,
+    textAlign: 'center',
+  },
+  nicknameInput: {
+    ...typography.body,
+    color: colors.textPrimary,
+    backgroundColor: colors.cardDarker,
+    borderRadius: borderRadius.default,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    width: '100%',
+    marginBottom: spacing.lg,
+    textAlign: 'center',
+    fontSize: 18,
+  },
+  saveNicknameButton: {
+    backgroundColor: colors.primary,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.xxl,
+    borderRadius: borderRadius.full,
+    width: '100%',
+    alignItems: 'center',
+  },
+  saveNicknameButtonDisabled: {
+    opacity: 0.5,
+  },
+  saveNicknameButtonText: {
+    ...typography.button,
     color: colors.white,
   },
 });

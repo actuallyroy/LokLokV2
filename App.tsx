@@ -10,7 +10,8 @@ import {
   addNotificationReceivedListener,
   addNotificationResponseListener,
 } from './src/services/notifications';
-import { applyReceivedDrawing, registerBackgroundNotificationHandler, getPairingId } from './src/services/backgroundTask';
+import { applyReceivedDrawing, registerBackgroundNotificationHandler, getPairingId, getDeviceId, saveDeviceId } from './src/services/backgroundTask';
+import { listenForPairingStatus } from './src/services/strokeSync';
 import { useSettingsStore, usePairingStore } from './src/store';
 
 // Initialize Firebase
@@ -20,7 +21,7 @@ export default function App() {
   const [fontsLoaded, setFontsLoaded] = useState(false);
   const appState = useRef(AppState.currentState);
   const { autoApplyDrawings } = useSettingsStore();
-  const { pairingId, isPaired } = usePairingStore();
+  const { pairingId, isPaired, myDeviceId, setMyDeviceId, disconnect } = usePairingStore();
 
   useEffect(() => {
     async function loadFonts() {
@@ -34,6 +35,41 @@ export default function App() {
 
     loadFonts();
   }, []);
+
+  // Initialize device ID
+  useEffect(() => {
+    const initDeviceId = async () => {
+      let deviceId = await getDeviceId();
+      if (!deviceId) {
+        deviceId = `device_${Date.now().toString(36)}_${Math.random().toString(36).substr(2, 9)}`;
+        await saveDeviceId(deviceId);
+      }
+      if (!myDeviceId || myDeviceId !== deviceId) {
+        setMyDeviceId(deviceId);
+      }
+    };
+    initDeviceId();
+  }, [myDeviceId, setMyDeviceId]);
+
+  // Listen for partner disconnection
+  useEffect(() => {
+    if (!isPaired || !pairingId || !myDeviceId) return;
+
+    console.log('Setting up pairing status listener...');
+    const unsubscribe = listenForPairingStatus(
+      pairingId,
+      myDeviceId,
+      () => {
+        console.log('Partner disconnected - clearing local pairing state');
+        disconnect();
+      }
+    );
+
+    return () => {
+      console.log('Cleaning up pairing status listener');
+      unsubscribe();
+    };
+  }, [isPaired, pairingId, myDeviceId, disconnect]);
 
   // Check for pending drawings when app comes to foreground
   useEffect(() => {
