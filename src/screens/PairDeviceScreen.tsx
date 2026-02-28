@@ -2,10 +2,10 @@ import React, { useMemo, useRef } from 'react';
 import { View, Text, StyleSheet, StatusBar, TouchableOpacity, Alert, Image } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import QRCode from 'react-native-qrcode-svg';
 import QRCodeStyled from 'react-native-qrcode-styled';
-import * as FileSystem from 'expo-file-system';
+import ViewShot from 'react-native-view-shot';
 import * as Sharing from 'expo-sharing';
+import * as MediaLibrary from 'expo-media-library';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Header, Button } from '../components/common';
 import { colors, typography, spacing, borderRadius } from '../theme';
@@ -24,10 +24,10 @@ interface PairDeviceScreenProps {
 export const PairDeviceScreen: React.FC<PairDeviceScreenProps> = ({
   navigation,
 }) => {
-  const { isPaired, partnerName } = usePairingStore();
+  const { isPaired, partnerName, disconnect } = usePairingStore();
   const { hasCompletedOnboarding, setOnboardingComplete } = useSettingsStore();
   const insets = useSafeAreaInsets();
-  const qrRef = useRef<any>(null);
+  const viewShotRef = useRef<ViewShot>(null);
 
   // Generate a unique pairing code (in real app, this would come from backend)
   const pairingCode = useMemo(() => {
@@ -45,31 +45,76 @@ export const PairDeviceScreen: React.FC<PairDeviceScreenProps> = ({
   };
 
   const handleShareQR = async () => {
-    if (!qrRef.current) return;
+    if (!viewShotRef.current) return;
 
     try {
-      // Get base64 data from QR code
-      qrRef.current.toDataURL(async (dataURL: string) => {
-        // Save to temp file
-        const filename = `${FileSystem.cacheDirectory}loklok-pairing-qr.png`;
-        await FileSystem.writeAsStringAsync(filename, dataURL, {
-          encoding: FileSystem.EncodingType.Base64,
-        });
+      // Capture the styled QR view
+      const uri = await viewShotRef.current.capture?.();
 
-        // Check if sharing is available
-        const isAvailable = await Sharing.isAvailableAsync();
-        if (isAvailable) {
-          await Sharing.shareAsync(filename, {
-            mimeType: 'image/png',
-            dialogTitle: 'Share your LokLok pairing code',
-          });
-        } else {
-          Alert.alert('Sharing not available', 'Sharing is not available on this device');
-        }
-      });
+      if (!uri) {
+        Alert.alert('Error', 'Failed to capture QR code');
+        return;
+      }
+
+      // Check if sharing is available
+      const isAvailable = await Sharing.isAvailableAsync();
+      if (isAvailable) {
+        await Sharing.shareAsync(uri, {
+          mimeType: 'image/png',
+          dialogTitle: 'Share your LokLok pairing code',
+        });
+      } else {
+        Alert.alert('Sharing not available', 'Sharing is not available on this device');
+      }
     } catch (error) {
       console.error('Error sharing QR code:', error);
       Alert.alert('Error', 'Failed to share QR code');
+    }
+  };
+
+  const handleDisconnect = () => {
+    Alert.alert(
+      'Disconnect',
+      `Are you sure you want to disconnect from ${partnerName || 'your partner'}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Disconnect',
+          style: 'destructive',
+          onPress: () => disconnect(),
+        },
+      ]
+    );
+  };
+
+  const handleSaveToGallery = async () => {
+    if (!viewShotRef.current) return;
+
+    try {
+      // Request permission
+      const { status } = await MediaLibrary.requestPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert(
+          'Permission Required',
+          'Please grant access to save images to your gallery.'
+        );
+        return;
+      }
+
+      // Capture the styled QR view
+      const uri = await viewShotRef.current.capture?.();
+
+      if (!uri) {
+        Alert.alert('Error', 'Failed to capture QR code');
+        return;
+      }
+
+      // Save to gallery
+      await MediaLibrary.saveToLibraryAsync(uri);
+      Alert.alert('Saved!', 'QR code saved to your gallery.');
+    } catch (error) {
+      console.error('Error saving QR code:', error);
+      Alert.alert('Error', 'Failed to save QR code');
     }
   };
 
@@ -112,32 +157,37 @@ export const PairDeviceScreen: React.FC<PairDeviceScreenProps> = ({
                   style={styles.logoImage}
                 />
               </View>
-              {/* Hidden QR for sharing */}
-              <View style={{ position: 'absolute', opacity: 0 }}>
-                <QRCode
-                  value={pairingCode}
-                  size={200}
-                  getRef={(ref) => (qrRef.current = ref)}
-                  ecl="H"
-                />
-              </View>
             </View>
             <Text style={styles.qrHint}>Your pairing code</Text>
 
-            {/* Share Button */}
-            <TouchableOpacity style={styles.shareButton} onPress={handleShareQR}>
-              <MaterialIcons name="share" size={20} color={colors.primary} />
-              <Text style={styles.shareButtonText}>Share QR Code</Text>
-            </TouchableOpacity>
+            {/* Action Buttons */}
+            <View style={styles.actionButtonsRow}>
+              <TouchableOpacity style={styles.actionButton} onPress={handleSaveToGallery}>
+                <MaterialIcons name="save-alt" size={20} color={colors.primary} />
+                <Text style={styles.actionButtonText}>Save</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.actionButton} onPress={handleShareQR}>
+                <MaterialIcons name="share" size={20} color={colors.primary} />
+                <Text style={styles.actionButtonText}>Share</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         )}
 
         {/* Paired Status */}
         {isPaired && (
           <View style={styles.pairedContainer}>
+            <View style={styles.pairedHeader}>
+              <MaterialIcons name="link" size={24} color={colors.primary} />
+              <Text style={styles.pairedTitle}>Connected</Text>
+            </View>
             <Text style={styles.pairedText}>
-              Connected with {partnerName || 'Partner'}
+              You're paired with {partnerName || 'Partner'}
             </Text>
+            <TouchableOpacity style={styles.disconnectButton} onPress={handleDisconnect}>
+              <MaterialIcons name="link-off" size={18} color={colors.error || '#FF4444'} />
+              <Text style={styles.disconnectButtonText}>Disconnect</Text>
+            </TouchableOpacity>
           </View>
         )}
 
@@ -159,6 +209,51 @@ export const PairDeviceScreen: React.FC<PairDeviceScreenProps> = ({
             </TouchableOpacity>
           )}
         </View>
+      </View>
+
+      {/* Hidden shareable QR view */}
+      <View style={styles.hiddenContainer}>
+        <ViewShot
+          ref={viewShotRef}
+          options={{ format: 'png', quality: 1 }}
+        >
+          <View style={styles.shareableCard}>
+            {/* Header with logo and branding */}
+            <View style={styles.shareableHeader}>
+              <Image
+                source={require('../../assets/icon.png')}
+                style={styles.shareableLogo}
+              />
+              <Text style={styles.shareableBrand}>LokLok</Text>
+            </View>
+
+            {/* QR Code */}
+            <View style={styles.shareableQrWrapper}>
+              <QRCodeStyled
+                data={pairingCode}
+                style={{ backgroundColor: 'white' }}
+                padding={12}
+                pieceSize={5}
+                pieceBorderRadius={2.5}
+                pieceCornerType="rounded"
+                isPiecesGlued={true}
+                color={colors.backgroundDark}
+              />
+              <View style={styles.shareableLogoOverlay}>
+                <Image
+                  source={require('../../assets/icon.png')}
+                  style={styles.shareableLogoSmall}
+                />
+              </View>
+            </View>
+
+            {/* Instructions */}
+            <Text style={styles.shareableTitle}>Scan to connect with me</Text>
+            <Text style={styles.shareableSubtitle}>
+              Open LokLok app and scan this code{'\n'}to start drawing together
+            </Text>
+          </View>
+        </ViewShot>
       </View>
     </View>
   );
@@ -226,30 +321,60 @@ const styles = StyleSheet.create({
     color: colors.textTertiary,
     marginTop: spacing.lg,
   },
-  shareButton: {
+  actionButtonsRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
+    gap: spacing.md,
     marginTop: spacing.lg,
+  },
+  actionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.lg,
     borderRadius: borderRadius.full,
     borderWidth: 1,
     borderColor: colors.primary,
   },
-  shareButtonText: {
+  actionButtonText: {
     ...typography.buttonSmall,
     color: colors.primary,
   },
   pairedContainer: {
     backgroundColor: colors.cardDark,
     padding: spacing.xl,
-    borderRadius: borderRadius.default,
+    borderRadius: borderRadius.lg,
     alignItems: 'center',
+  },
+  pairedHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  pairedTitle: {
+    ...typography.h4,
+    color: colors.primary,
   },
   pairedText: {
     ...typography.body,
-    color: colors.primary,
+    color: colors.textSecondary,
+    marginBottom: spacing.lg,
+  },
+  disconnectButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    borderRadius: borderRadius.full,
+    borderWidth: 1,
+    borderColor: colors.error || '#FF4444',
+  },
+  disconnectButtonText: {
+    ...typography.buttonSmall,
+    color: colors.error || '#FF4444',
   },
   spacer: {
     flex: 1,
@@ -263,5 +388,72 @@ const styles = StyleSheet.create({
   skipText: {
     ...typography.body,
     color: colors.textTertiary,
+  },
+  // Shareable card styles
+  hiddenContainer: {
+    position: 'absolute',
+    left: -9999,
+    top: -9999,
+  },
+  shareableCard: {
+    backgroundColor: colors.white,
+    paddingVertical: spacing.xxl + spacing.lg,
+    paddingHorizontal: spacing.xxl,
+    alignItems: 'center',
+    width: 320,
+  },
+  shareableHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: spacing.xl,
+  },
+  shareableLogo: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    marginRight: spacing.sm,
+  },
+  shareableBrand: {
+    fontSize: 28,
+    fontWeight: '700',
+    color: colors.backgroundDark,
+  },
+  shareableQrWrapper: {
+    position: 'relative',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: spacing.md,
+    backgroundColor: colors.white,
+    borderRadius: borderRadius.lg,
+    borderWidth: 2,
+    borderColor: colors.backgroundDark,
+  },
+  shareableLogoOverlay: {
+    position: 'absolute',
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  shareableLogoSmall: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+  },
+  shareableTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: colors.backgroundDark,
+    marginTop: spacing.xl,
+    textAlign: 'center',
+  },
+  shareableSubtitle: {
+    fontSize: 14,
+    color: '#666',
+    marginTop: spacing.sm,
+    textAlign: 'center',
+    lineHeight: 20,
   },
 });
