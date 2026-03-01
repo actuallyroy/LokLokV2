@@ -46,25 +46,31 @@ export async function sendDrawingToPartner(
   canvasHeight: number
 ): Promise<boolean> {
   try {
-    console.log('Sending drawing to partner...', { pairingId, strokeCount: strokes.length });
+    console.log('=== sendDrawingToPartner START ===');
+    console.log('pairingId:', pairingId);
+    console.log('strokeCount:', strokes.length);
+    console.log('senderId:', senderId);
 
     if (!pairingId) {
-      console.error('No pairingId provided');
+      console.error('FAIL: No pairingId provided');
       return false;
     }
 
     const db = getFirestoreDb();
+    console.log('Firestore DB obtained');
     const drawingRef = doc(db, 'drawings', pairingId);
 
     // Try to encrypt the stroke data
     const strokesJson = JSON.stringify(strokes);
+    console.log('Encrypting strokes...');
     const encryptedData = await encryptStrokes(strokesJson);
+    console.log('Encryption result:', encryptedData ? 'SUCCESS' : 'NO SHARED SECRET');
 
     let drawingData: any;
 
     if (encryptedData) {
       // E2E encrypted - only send encrypted blob
-      console.log('Sending E2E encrypted drawing');
+      console.log('Preparing E2E encrypted drawing data');
       drawingData = {
         encrypted: true,
         encryptedData,
@@ -77,7 +83,7 @@ export async function sendDrawingToPartner(
       };
     } else {
       // Fallback to unencrypted (for backwards compatibility or if no shared secret)
-      console.log('Sending unencrypted drawing (no E2E key)');
+      console.log('Preparing unencrypted drawing data (no E2E key)');
       drawingData = {
         encrypted: false,
         strokes,
@@ -89,12 +95,15 @@ export async function sendDrawingToPartner(
       };
     }
 
+    console.log('Writing to Firestore...');
     await setDoc(drawingRef, drawingData);
-    console.log('Drawing sent to partner successfully', { encrypted: !!encryptedData });
+    console.log('=== sendDrawingToPartner SUCCESS ===');
     return true;
   } catch (error: any) {
-    console.error('Error sending drawing:', error?.message || error);
+    console.error('=== sendDrawingToPartner FAILED ===');
+    console.error('Error message:', error?.message || error);
     console.error('Error code:', error?.code);
+    console.error('Full error:', JSON.stringify(error, null, 2));
     return false;
   }
 }
@@ -317,6 +326,7 @@ export async function createPairing(
     });
 
     // Store the main pairing document with both public keys
+    // Use setDoc to completely overwrite any existing document
     await setDoc(doc(db, 'pairings', pairingId), {
       devices: [myDeviceId, partnerDeviceId],
       deviceTokens: {
@@ -332,8 +342,17 @@ export async function createPairing(
         [partnerDeviceId]: partnerPublicKey,
       },
       e2eEnabled: true,
+      status: 'active',
       createdAt: serverTimestamp(),
     });
+
+    // Also delete any old drawing document for this pairing
+    try {
+      await deleteDoc(doc(db, 'drawings', pairingId));
+      console.log('Old drawing document cleared');
+    } catch (e) {
+      // Ignore if doesn't exist
+    }
 
     console.log('Pairing with E2E created successfully');
     return pairingId;
@@ -382,7 +401,7 @@ export function listenForPairing(
 }
 
 /**
- * Notify partner of disconnection by updating Firebase pairing status
+ * Notify partner of disconnection and clean up Firestore data
  */
 export async function notifyPartnerOfDisconnect(
   pairingId: string,
@@ -391,6 +410,7 @@ export async function notifyPartnerOfDisconnect(
   try {
     const db = getFirestoreDb();
     const pairingRef = doc(db, 'pairings', pairingId);
+    const drawingRef = doc(db, 'drawings', pairingId);
 
     // Update the pairing document with disconnection info
     await updateDoc(pairingRef, {
@@ -398,6 +418,14 @@ export async function notifyPartnerOfDisconnect(
       disconnectedBy: myDeviceId,
       disconnectedAt: serverTimestamp(),
     });
+
+    // Delete the drawing document to clean up for future re-pairing
+    try {
+      await deleteDoc(drawingRef);
+      console.log('Drawing document deleted');
+    } catch (e) {
+      console.log('Could not delete drawing document:', e);
+    }
 
     console.log('Partner notified of disconnection');
     return true;
@@ -417,6 +445,7 @@ export function listenForPairingStatus(
 ): () => void {
   const db = getFirestoreDb();
   const pairingRef = doc(db, 'pairings', pairingId);
+  let hasTriggeredDisconnect = false;
 
   console.log('Listening for pairing status changes:', pairingId);
 
@@ -426,13 +455,16 @@ export function listenForPairingStatus(
       if (snapshot.exists()) {
         const data = snapshot.data();
         // Check if pairing was disconnected by the other device
-        if (data.status === 'disconnected' && data.disconnectedBy !== myDeviceId) {
+        // Only trigger once to avoid multiple disconnect calls
+        if (data.status === 'disconnected' && data.disconnectedBy !== myDeviceId && !hasTriggeredDisconnect) {
           console.log('Partner disconnected, notifying...');
+          hasTriggeredDisconnect = true;
           onPartnerDisconnected();
         }
-      } else {
+      } else if (!hasTriggeredDisconnect) {
         // Document was deleted - partner disconnected
         console.log('Pairing document deleted, partner disconnected');
+        hasTriggeredDisconnect = true;
         onPartnerDisconnected();
       }
     },

@@ -83,7 +83,7 @@ export async function sendPushToPartner(
     const message = {
       to: partnerToken,
       sound: 'default',
-      title: 'New Drawing! 💕',
+      title: 'New Drawing!',
       body: `${senderName} sent you a drawing`,
       data: {
         type: 'new_drawing',
@@ -91,6 +91,13 @@ export async function sendPushToPartner(
       },
       priority: 'high',
       channelId: 'drawing-updates',
+      // Enable background processing
+      _contentAvailable: true,
+      // Android specific
+      android: {
+        priority: 'high',
+        channelId: 'drawing-updates',
+      },
     };
 
     const response = await fetch('https://exp.host/--/api/v2/push/send', {

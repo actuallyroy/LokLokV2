@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { View, StyleSheet, AppState, AppStateStatus } from 'react-native';
+import { View, StyleSheet, AppState, AppStateStatus, Alert, Platform } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import * as Font from 'expo-font';
 import { AppNavigator } from './src/navigation';
@@ -13,6 +13,7 @@ import {
 import { applyReceivedDrawing, registerBackgroundNotificationHandler, getPairingId, getDeviceId, saveDeviceId } from './src/services/backgroundTask';
 import { listenForPairingStatus } from './src/services/strokeSync';
 import { useSettingsStore, usePairingStore } from './src/store';
+import { isBatteryOptimizationIgnored, requestBatteryOptimizationBypass } from './modules/wallpaper';
 
 // Initialize Firebase
 initializeFirebase();
@@ -93,6 +94,32 @@ export default function App() {
       subscription.remove();
     };
   }, [autoApplyDrawings, isPaired, pairingId]);
+
+  // Check battery optimization when paired (Android only)
+  useEffect(() => {
+    if (!isPaired || Platform.OS !== 'android') return;
+
+    const checkBatteryOptimization = async () => {
+      const isIgnored = await isBatteryOptimizationIgnored();
+      if (!isIgnored) {
+        Alert.alert(
+          'Enable Background Updates',
+          'To receive lockscreen drawings while the app is closed, please disable battery optimization for LokLok.',
+          [
+            { text: 'Later', style: 'cancel' },
+            {
+              text: 'Open Settings',
+              onPress: () => requestBatteryOptimizationBypass(),
+            },
+          ]
+        );
+      }
+    };
+
+    // Small delay to not interrupt initial app experience
+    const timer = setTimeout(checkBatteryOptimization, 2000);
+    return () => clearTimeout(timer);
+  }, [isPaired]);
 
   // Set up push notifications
   useEffect(() => {

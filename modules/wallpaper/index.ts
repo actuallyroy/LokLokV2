@@ -114,6 +114,34 @@ export async function stopSyncService(): Promise<boolean> {
   }
 }
 
+/**
+ * Check if battery optimization is disabled for this app
+ * Returns true if the app can run unrestricted in the background
+ */
+export async function isBatteryOptimizationIgnored(): Promise<boolean> {
+  if (!WallpaperNativeModule) return false;
+  try {
+    return await WallpaperNativeModule.isBatteryOptimizationIgnored();
+  } catch (error) {
+    console.error('Error checking battery optimization:', error);
+    return false;
+  }
+}
+
+/**
+ * Request the user to disable battery optimization for this app
+ * Opens the system dialog for battery optimization exemption
+ */
+export async function requestBatteryOptimizationBypass(): Promise<boolean> {
+  if (!WallpaperNativeModule) return false;
+  try {
+    return await WallpaperNativeModule.requestBatteryOptimizationBypass();
+  } catch (error) {
+    console.error('Error requesting battery optimization bypass:', error);
+    return false;
+  }
+}
+
 export default {
   getWallpaper,
   setLockscreenWallpaper,
@@ -121,4 +149,6 @@ export default {
   compositeAndSetLockscreen,
   startSyncService,
   stopSyncService,
+  isBatteryOptimizationIgnored,
+  requestBatteryOptimizationBypass,
 };
