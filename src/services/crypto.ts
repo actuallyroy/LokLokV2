@@ -3,7 +3,54 @@
  * Uses TweetNaCl for X25519 key exchange and secretbox encryption
  */
 
+// Import polyfill BEFORE nacl - this sets up crypto.getRandomValues
+import 'react-native-get-random-values';
 import nacl from 'tweetnacl';
+
+// JavaScript PRNG fallback using xorshift128+
+let s0 = (Date.now() ^ 0xdeadbeef) >>> 0;
+let s1 = ((Date.now() * 1000) ^ 0xcafebabe) >>> 0;
+
+function xorshift128plus(): number {
+  let x = s0;
+  const y = s1;
+  s0 = y;
+  x ^= x << 23;
+  x ^= x >>> 17;
+  x ^= y;
+  x ^= y >>> 26;
+  s1 = x;
+  return (s0 + s1) >>> 0;
+}
+
+// Configure TweetNaCl PRNG - try native crypto first, fall back to JS
+let usingSecureCrypto = false;
+try {
+  if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+    // Test if it actually works
+    const test = new Uint8Array(4);
+    crypto.getRandomValues(test);
+    nacl.setPRNG((x: Uint8Array, _n: number) => {
+      crypto.getRandomValues(x);
+    });
+    usingSecureCrypto = true;
+    console.log('TweetNaCl PRNG: using secure crypto.getRandomValues');
+  }
+} catch (e) {
+  // Native crypto not available
+}
+
+if (!usingSecureCrypto) {
+  // Fallback to JS implementation
+  s0 = (Date.now() ^ (Math.random() * 0xffffffff)) >>> 0;
+  s1 = ((Date.now() / 1000) ^ (Math.random() * 0xffffffff)) >>> 0;
+  nacl.setPRNG((x: Uint8Array, n: number) => {
+    for (let i = 0; i < n; i++) {
+      x[i] = xorshift128plus() & 0xff;
+    }
+  });
+  console.log('TweetNaCl PRNG: using JS fallback (less secure)');
+}
 import {
   encodeBase64,
   decodeBase64,

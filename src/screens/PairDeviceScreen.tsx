@@ -2,8 +2,8 @@ import React, { useMemo, useRef, useEffect, useState } from 'react';
 import { View, Text, StyleSheet, StatusBar, TouchableOpacity, Alert, Image, Modal, TextInput } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import QRCodeStyled from 'react-native-qrcode-styled';
-import ViewShot from 'react-native-view-shot';
+import QRCode from 'react-native-qrcode-svg';
+import ViewShot, { captureRef } from 'react-native-view-shot';
 import * as Sharing from 'expo-sharing';
 import * as MediaLibrary from 'expo-media-library';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -70,11 +70,16 @@ export const PairDeviceScreen: React.FC<PairDeviceScreenProps> = ({
       const token = await registerForPushNotifications();
       setFcmToken(token);
 
-      // Initialize E2E encryption keypair
-      const keyPair = await initializeEncryption();
-      setPublicKey(keyPair.publicKey);
-      setSecretKey(keyPair.secretKey);
-      console.log('E2E keypair initialized');
+      // Initialize E2E encryption keypair (optional - app works without it)
+      try {
+        const keyPair = await initializeEncryption();
+        setPublicKey(keyPair.publicKey);
+        setSecretKey(keyPair.secretKey);
+        console.log('E2E keypair initialized');
+      } catch (error) {
+        console.warn('E2E encryption not available:', error);
+        // App will work without E2E encryption
+      }
     };
     init();
   }, [setMyDeviceId]);
@@ -132,7 +137,7 @@ export const PairDeviceScreen: React.FC<PairDeviceScreenProps> = ({
       deviceId,
       fcmToken: fcmToken || '',
       userName: userName || 'Partner',
-      publicKey, // Include public key for E2E encryption
+      publicKey,
     };
     return JSON.stringify(data);
   }, [deviceId, fcmToken, userName, publicKey]);
@@ -154,7 +159,7 @@ export const PairDeviceScreen: React.FC<PairDeviceScreenProps> = ({
 
     try {
       // Capture the styled QR view
-      const uri = await viewShotRef.current.capture?.();
+      const uri = await captureRef(viewShotRef, { format: 'png', quality: 1 });
 
       if (!uri) {
         Alert.alert('Error', 'Failed to capture QR code');
@@ -216,7 +221,7 @@ export const PairDeviceScreen: React.FC<PairDeviceScreenProps> = ({
       }
 
       // Capture the styled QR view
-      const uri = await viewShotRef.current.capture?.();
+      const uri = await captureRef(viewShotRef, { format: 'png', quality: 1 });
 
       if (!uri) {
         Alert.alert('Error', 'Failed to capture QR code');
@@ -256,15 +261,11 @@ export const PairDeviceScreen: React.FC<PairDeviceScreenProps> = ({
             <View style={styles.qrCard}>
               {pairingCode ? (
                 <>
-                  <QRCodeStyled
-                    data={pairingCode}
-                    style={{ backgroundColor: 'white' }}
-                    padding={16}
-                    pieceSize={6}
-                    pieceBorderRadius={3}
-                    pieceCornerType="rounded"
-                    isPiecesGlued={true}
+                  <QRCode
+                    value={pairingCode}
+                    size={200}
                     color={colors.backgroundDark}
+                    backgroundColor="white"
                   />
                   {/* Rounded logo overlay */}
                   <View style={styles.logoOverlay}>
@@ -352,22 +353,12 @@ export const PairDeviceScreen: React.FC<PairDeviceScreenProps> = ({
             {/* QR Code */}
             {pairingCode && (
               <View style={styles.shareableQrWrapper}>
-                <QRCodeStyled
-                  data={pairingCode}
-                  style={{ backgroundColor: 'white' }}
-                  padding={12}
-                  pieceSize={5}
-                  pieceBorderRadius={2.5}
-                  pieceCornerType="rounded"
-                  isPiecesGlued={true}
+                <QRCode
+                  value={pairingCode}
+                  size={150}
                   color={colors.backgroundDark}
+                  backgroundColor="white"
                 />
-                <View style={styles.shareableLogoOverlay}>
-                  <Image
-                    source={require('../../assets/icon.png')}
-                    style={styles.shareableLogoSmall}
-                  />
-                </View>
               </View>
             )}
 

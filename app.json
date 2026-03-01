@@ -44,6 +44,14 @@
           "icon": "./assets/icon.png",
           "color": "#f44725"
         }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "minSdkVersion": 24
+          }
+        }
       ]
     ]
   }
