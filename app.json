@@ -26,6 +26,7 @@
       },
       "package": "com.loklok.app",
       "googleServicesFile": "./google-services.json",
+      "minSdkVersion": 24,
       "permissions": [
         "android.permission.SET_WALLPAPER",
         "android.permission.CAMERA",

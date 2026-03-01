@@ -12,6 +12,10 @@ interface PairingState {
   partnerFcmToken: string | null;
   isPartnerDrawing: boolean;
 
+  // E2E Encryption state
+  isE2EEnabled: boolean;
+  partnerPublicKey: string | null;
+
   // Actions
   setPaired: (
     pairingId: string,
@@ -23,6 +27,7 @@ interface PairingState {
   setMyDeviceId: (deviceId: string) => void;
   setPartnerDrawing: (isDrawing: boolean) => void;
   setPartnerFcmToken: (token: string) => void;
+  setE2EEnabled: (enabled: boolean, partnerPublicKey?: string) => void;
   disconnect: () => void;
 }
 
@@ -37,6 +42,8 @@ export const usePairingStore = create<PairingState>()(
       partnerId: null,
       partnerFcmToken: null,
       isPartnerDrawing: false,
+      isE2EEnabled: false,
+      partnerPublicKey: null,
 
       // Actions
       setPaired: (pairingId, partnerName, partnerId, partnerFcmToken, myDeviceId) =>
@@ -55,6 +62,12 @@ export const usePairingStore = create<PairingState>()(
 
       setPartnerFcmToken: (token) => set({ partnerFcmToken: token }),
 
+      setE2EEnabled: (enabled, partnerPublicKey) =>
+        set({
+          isE2EEnabled: enabled,
+          partnerPublicKey: partnerPublicKey || null,
+        }),
+
       disconnect: () =>
         set((state) => ({
           isPaired: false,
@@ -63,6 +76,8 @@ export const usePairingStore = create<PairingState>()(
           partnerId: null,
           partnerFcmToken: null,
           isPartnerDrawing: false,
+          isE2EEnabled: false,
+          partnerPublicKey: null,
           // Keep myDeviceId - it shouldn't change on disconnect
           myDeviceId: state.myDeviceId,
         })),

@@ -557,49 +557,52 @@ export const SharedCanvasScreen: React.FC<SharedCanvasScreenProps> = ({
 
       {/* Canvas Area */}
       <View style={styles.canvasWrapper}>
-        <View
-          ref={canvasRef}
-          style={[
-            styles.canvasContainer,
-            {
-              aspectRatio: screenAspectRatio,
-              flex: undefined,
-              maxHeight: '100%',
-            },
-          ]}
-          collapsable={false}
-        >
-          {/* Wallpaper Background */}
-          {wallpaperUri ? (
-            <Image
-              source={{ uri: wallpaperUri }}
-              style={styles.wallpaperBackground}
-              resizeMode="cover"
-            />
-          ) : (
-            <TouchableOpacity
-              style={styles.selectBackgroundButton}
-              onPress={pickWallpaperFromGallery}
-            >
-              <MaterialIcons name="add-photo-alternate" size={48} color={colors.textSecondary} />
-              <Text style={styles.selectBackgroundText}>Tap to select your lockscreen image</Text>
-            </TouchableOpacity>
-          )}
-
-          {/* Drawing Canvas - only active when wallpaper is selected */}
-          {wallpaperUri && (
-            <View style={styles.drawingLayer}>
-              <DrawingCanvas
-                strokes={strokes}
-                onStrokesChange={handleStrokesChange}
-                currentColor={currentColor}
-                brushSize={brushSize}
-                isEraser={selectedTool === 'eraser'}
+        {/* Canvas position wrapper - for button positioning */}
+        <View style={styles.canvasPositioner}>
+          <View
+            ref={canvasRef}
+            style={[
+              styles.canvasContainer,
+              {
+                aspectRatio: screenAspectRatio,
+                flex: undefined,
+                maxHeight: '100%',
+              },
+            ]}
+            collapsable={false}
+          >
+            {/* Wallpaper Background */}
+            {wallpaperUri ? (
+              <Image
+                source={{ uri: wallpaperUri }}
+                style={styles.wallpaperBackground}
+                resizeMode="cover"
               />
-            </View>
-          )}
+            ) : (
+              <TouchableOpacity
+                style={styles.selectBackgroundButton}
+                onPress={pickWallpaperFromGallery}
+              >
+                <MaterialIcons name="add-photo-alternate" size={48} color={colors.textSecondary} />
+                <Text style={styles.selectBackgroundText}>Tap to select your lockscreen image</Text>
+              </TouchableOpacity>
+            )}
 
-          {/* Change Background Button */}
+            {/* Drawing Canvas - only active when wallpaper is selected */}
+            {wallpaperUri && (
+              <View style={styles.drawingLayer}>
+                <DrawingCanvas
+                  strokes={strokes}
+                  onStrokesChange={handleStrokesChange}
+                  currentColor={currentColor}
+                  brushSize={brushSize}
+                  isEraser={selectedTool === 'eraser'}
+                />
+              </View>
+            )}
+          </View>
+
+          {/* Change Background Button - OUTSIDE canvas ref so it's not captured */}
           {wallpaperUri && (
             <TouchableOpacity
               style={styles.changeBackgroundButton}
@@ -684,6 +687,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.sm,
+  },
+  canvasPositioner: {
+    position: 'relative',
+    width: '100%',
+    maxHeight: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   canvasContainer: {
     flex: 1,

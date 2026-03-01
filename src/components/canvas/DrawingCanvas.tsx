@@ -1,10 +1,10 @@
-import React, { useRef, useState, useMemo } from 'react';
+import React, { useRef, useState, useCallback } from 'react';
 import { View, StyleSheet, Dimensions } from 'react-native';
 import {
   GestureDetector,
   Gesture,
 } from 'react-native-gesture-handler';
-import Svg, { Path, G, Defs, Mask, Rect } from 'react-native-svg';
+import Svg, { Path } from 'react-native-svg';
 import { colors } from '../../theme';
 
 export interface Stroke {
@@ -12,8 +12,37 @@ export interface Stroke {
   path: string;
   color: string;
   strokeWidth: number;
-  isEraser?: boolean;
 }
+
+// Parse SVG path string to extract points
+const parsePathToPoints = (path: string): { x: number; y: number }[] => {
+  const points: { x: number; y: number }[] = [];
+  const commands = path.match(/[ML]\s*[\d.]+\s+[\d.]+/g) || [];
+
+  for (const cmd of commands) {
+    const nums = cmd.match(/[\d.]+/g);
+    if (nums && nums.length >= 2) {
+      points.push({ x: parseFloat(nums[0]), y: parseFloat(nums[1]) });
+    }
+  }
+  return points;
+};
+
+// Check if a point is close to any point in a stroke
+const isPointNearStroke = (
+  point: { x: number; y: number },
+  strokePoints: { x: number; y: number }[],
+  threshold: number
+): boolean => {
+  for (const sp of strokePoints) {
+    const dx = point.x - sp.x;
+    const dy = point.y - sp.y;
+    if (dx * dx + dy * dy < threshold * threshold) {
+      return true;
+    }
+  }
+  return false;
+};
 
 interface DrawingCanvasProps {
   strokes: Stroke[];
@@ -35,112 +64,99 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
 }) => {
   const [currentPath, setCurrentPath] = useState<string>('');
   const pathRef = useRef<string>('');
+  const strokesRef = useRef<Stroke[]>(strokes);
+
+  // Keep strokesRef in sync
+  strokesRef.current = strokes;
 
   const generateId = () => `stroke_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+  // Erase strokes that the eraser touches
+  const eraseAtPoint = useCallback((x: number, y: number) => {
+    const eraserRadius = brushSize * 2;
+    const point = { x, y };
+
+    const remainingStrokes = strokesRef.current.filter((stroke) => {
+      const strokePoints = parsePathToPoints(stroke.path);
+      // Keep the stroke if the eraser is NOT near it
+      return !isPointNearStroke(point, strokePoints, eraserRadius + stroke.strokeWidth / 2);
+    });
+
+    if (remainingStrokes.length !== strokesRef.current.length) {
+      onStrokesChange(remainingStrokes);
+    }
+  }, [brushSize, onStrokesChange]);
 
   const panGesture = Gesture.Pan()
     .onStart((event) => {
       const { x, y } = event;
-      pathRef.current = `M ${x} ${y}`;
-      setCurrentPath(pathRef.current);
+      if (isEraser) {
+        eraseAtPoint(x, y);
+      } else {
+        pathRef.current = `M ${x} ${y}`;
+        setCurrentPath(pathRef.current);
+      }
     })
     .onUpdate((event) => {
       const { x, y } = event;
-      pathRef.current += ` L ${x} ${y}`;
-      setCurrentPath(pathRef.current);
+      if (isEraser) {
+        eraseAtPoint(x, y);
+        // Show eraser cursor path
+        if (!pathRef.current) {
+          pathRef.current = `M ${x} ${y}`;
+        } else {
+          pathRef.current += ` L ${x} ${y}`;
+        }
+        setCurrentPath(pathRef.current);
+      } else {
+        pathRef.current += ` L ${x} ${y}`;
+        setCurrentPath(pathRef.current);
+      }
     })
     .onEnd(() => {
-      if (pathRef.current) {
+      if (!isEraser && pathRef.current) {
         const newStroke: Stroke = {
           id: generateId(),
           path: pathRef.current,
-          color: isEraser ? '#000000' : currentColor,
-          strokeWidth: isEraser ? brushSize * 2 : brushSize,
-          isEraser: isEraser,
+          color: currentColor,
+          strokeWidth: brushSize,
         };
         onStrokesChange([...strokes, newStroke]);
-        pathRef.current = '';
-        setCurrentPath('');
       }
+      pathRef.current = '';
+      setCurrentPath('');
     })
     .minDistance(1)
     .runOnJS(true);
-
-  // Separate drawing strokes and eraser strokes
-  const { drawingStrokes, eraserStrokes } = useMemo(() => {
-    const drawing: Stroke[] = [];
-    const eraser: Stroke[] = [];
-    strokes.forEach((stroke) => {
-      if (stroke.isEraser) {
-        eraser.push(stroke);
-      } else {
-        drawing.push(stroke);
-      }
-    });
-    return { drawingStrokes: drawing, eraserStrokes: eraser };
-  }, [strokes]);
 
   return (
     <View style={styles.container}>
       <GestureDetector gesture={panGesture}>
         <View style={styles.canvasContainer}>
           <Svg style={styles.svg}>
-            <Defs>
-              {/* Mask for eraser effect - white is visible, black is erased */}
-              <Mask id="eraserMask">
-                {/* Start with everything visible (white) */}
-                <Rect x="0" y="0" width="100%" height="100%" fill="white" />
-                {/* Eraser strokes cut holes (black) */}
-                {eraserStrokes.map((stroke) => (
-                  <Path
-                    key={stroke.id}
-                    d={stroke.path}
-                    stroke="black"
-                    strokeWidth={stroke.strokeWidth}
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    fill="none"
-                  />
-                ))}
-                {/* Current eraser stroke preview */}
-                {currentPath && isEraser && (
-                  <Path
-                    d={currentPath}
-                    stroke="black"
-                    strokeWidth={brushSize * 2}
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    fill="none"
-                  />
-                )}
-              </Mask>
-            </Defs>
-
-            {/* Drawing strokes with eraser mask applied */}
-            <G mask="url(#eraserMask)">
-              {drawingStrokes.map((stroke) => (
-                <Path
-                  key={stroke.id}
-                  d={stroke.path}
-                  stroke={stroke.color}
-                  strokeWidth={stroke.strokeWidth}
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  fill="none"
-                />
-              ))}
-              {/* Current drawing stroke preview */}
-              {currentPath && !isEraser && (
-                <Path
-                  d={currentPath}
-                  stroke={currentColor}
-                  strokeWidth={brushSize}
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  fill="none"
-                />
-              )}
-            </G>
+            {/* Render all strokes - simple and fast */}
+            {strokes.map((stroke) => (
+              <Path
+                key={stroke.id}
+                d={stroke.path}
+                stroke={stroke.color}
+                strokeWidth={stroke.strokeWidth}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                fill="none"
+              />
+            ))}
+            {/* Current stroke/eraser preview */}
+            {currentPath && (
+              <Path
+                d={currentPath}
+                stroke={isEraser ? 'rgba(255,100,100,0.4)' : currentColor}
+                strokeWidth={isEraser ? brushSize * 4 : brushSize}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                fill="none"
+              />
+            )}
           </Svg>
         </View>
       </GestureDetector>

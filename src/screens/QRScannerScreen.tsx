@@ -22,6 +22,11 @@ import { usePairingStore, useSettingsStore } from '../store';
 import { createPairing } from '../services/strokeSync';
 import { registerForPushNotifications } from '../services/notifications';
 import { getDeviceId, saveDeviceId } from '../services/backgroundTask';
+import {
+  initializeEncryption,
+  deriveSharedSecret,
+  storeSharedSecret,
+} from '../services/crypto';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCAN_AREA_SIZE = SCREEN_WIDTH * 0.7;
@@ -45,7 +50,7 @@ export const QRScannerScreen: React.FC<QRScannerScreenProps> = ({
   const [nicknameInput, setNicknameInput] = useState('');
   const [pendingQRData, setPendingQRData] = useState<string | null>(null);
   const insets = useSafeAreaInsets();
-  const { setPaired } = usePairingStore();
+  const { setPaired, setE2EEnabled } = usePairingStore();
   const { setOnboardingComplete, userName, setUserName } = useSettingsStore();
 
   useEffect(() => {
@@ -86,17 +91,35 @@ export const QRScannerScreen: React.FC<QRScannerScreenProps> = ({
         }
         const myFcmToken = await registerForPushNotifications();
 
-        // Create pairing in Firebase
+        // Initialize E2E encryption keypair
+        const myKeyPair = await initializeEncryption();
+        console.log('E2E keypair initialized for scanner');
+
+        // Create pairing in Firebase with public keys
         const pairingId = await createPairing(
           myDeviceId,
           myFcmToken || '',
           userName || 'Partner',
+          myKeyPair.publicKey,
           parsed.deviceId,
           parsed.fcmToken || '',
-          parsed.userName || 'Partner'
+          parsed.userName || 'Partner',
+          parsed.publicKey || ''
         );
 
         if (pairingId) {
+          // Derive and store shared secret for E2E encryption
+          if (parsed.publicKey) {
+            try {
+              const sharedSecret = deriveSharedSecret(myKeyPair.secretKey, parsed.publicKey);
+              await storeSharedSecret(sharedSecret);
+              setE2EEnabled(true, parsed.publicKey);
+              console.log('E2E encryption established (scanner side)');
+            } catch (error) {
+              console.error('Failed to establish E2E encryption:', error);
+            }
+          }
+
           // Store pairing locally
           setPaired(
             pairingId,

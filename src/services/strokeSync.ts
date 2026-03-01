@@ -11,6 +11,7 @@ import {
 } from 'firebase/firestore';
 import { getFirestoreDb } from './firebase';
 import { Stroke } from '../components/canvas';
+import { encryptStrokes, decryptStrokes } from './crypto';
 
 export interface DrawingData {
   strokes: Stroke[];
@@ -19,6 +20,8 @@ export interface DrawingData {
   timestamp: Timestamp | null;
   canvasWidth: number;
   canvasHeight: number;
+  encrypted?: boolean;
+  encryptedData?: string;
 }
 
 export interface PairingData {
@@ -32,6 +35,7 @@ export interface PairingData {
  * Send drawing strokes to partner
  * Stores in Firestore under the pairing document
  * Note: Only strokes are sent - receiver composites locally using their own background
+ * Data is encrypted end-to-end if E2E is enabled
  */
 export async function sendDrawingToPartner(
   pairingId: string,
@@ -52,17 +56,41 @@ export async function sendDrawingToPartner(
     const db = getFirestoreDb();
     const drawingRef = doc(db, 'drawings', pairingId);
 
-    const drawingData: DrawingData = {
-      strokes,
-      senderId,
-      senderName,
-      timestamp: serverTimestamp() as Timestamp,
-      canvasWidth,
-      canvasHeight,
-    };
+    // Try to encrypt the stroke data
+    const strokesJson = JSON.stringify(strokes);
+    const encryptedData = await encryptStrokes(strokesJson);
+
+    let drawingData: any;
+
+    if (encryptedData) {
+      // E2E encrypted - only send encrypted blob
+      console.log('Sending E2E encrypted drawing');
+      drawingData = {
+        encrypted: true,
+        encryptedData,
+        senderId,
+        senderName,
+        timestamp: serverTimestamp(),
+        canvasWidth,
+        canvasHeight,
+        // Don't include raw strokes when encrypted
+      };
+    } else {
+      // Fallback to unencrypted (for backwards compatibility or if no shared secret)
+      console.log('Sending unencrypted drawing (no E2E key)');
+      drawingData = {
+        encrypted: false,
+        strokes,
+        senderId,
+        senderName,
+        timestamp: serverTimestamp(),
+        canvasWidth,
+        canvasHeight,
+      };
+    }
 
     await setDoc(drawingRef, drawingData);
-    console.log('Drawing sent to partner successfully');
+    console.log('Drawing sent to partner successfully', { encrypted: !!encryptedData });
     return true;
   } catch (error: any) {
     console.error('Error sending drawing:', error?.message || error);
@@ -73,6 +101,7 @@ export async function sendDrawingToPartner(
 
 /**
  * Get the latest drawing for a pairing
+ * Handles both encrypted and unencrypted data
  */
 export async function getLatestDrawing(pairingId: string): Promise<DrawingData | null> {
   try {
@@ -81,7 +110,35 @@ export async function getLatestDrawing(pairingId: string): Promise<DrawingData |
     const drawingSnap = await getDoc(drawingRef);
 
     if (drawingSnap.exists()) {
-      return drawingSnap.data() as DrawingData;
+      const rawData = drawingSnap.data();
+
+      if (rawData.encrypted && rawData.encryptedData) {
+        // Decrypt the drawing data
+        console.log('Decrypting stored drawing...');
+        try {
+          const decryptedJson = await decryptStrokes(rawData.encryptedData);
+          if (decryptedJson) {
+            const strokes = JSON.parse(decryptedJson) as Stroke[];
+            return {
+              strokes,
+              senderId: rawData.senderId,
+              senderName: rawData.senderName,
+              timestamp: rawData.timestamp,
+              canvasWidth: rawData.canvasWidth,
+              canvasHeight: rawData.canvasHeight,
+              encrypted: true,
+            };
+          } else {
+            console.error('Failed to decrypt drawing - no shared secret');
+            return null;
+          }
+        } catch (err) {
+          console.error('Failed to decrypt drawing:', err);
+          return null;
+        }
+      }
+
+      return rawData as DrawingData;
     }
     return null;
   } catch (error) {
@@ -92,6 +149,7 @@ export async function getLatestDrawing(pairingId: string): Promise<DrawingData |
 
 /**
  * Subscribe to drawing updates for a pairing
+ * Handles both encrypted and unencrypted data
  */
 export function subscribeToDrawings(
   pairingId: string,
@@ -105,12 +163,46 @@ export function subscribeToDrawings(
 
   const unsubscribe = onSnapshot(
     drawingRef,
-    (snapshot) => {
+    async (snapshot) => {
       snapshotCount++;
       console.log(`[${Date.now()}] Firestore snapshot #${snapshotCount} received, exists: ${snapshot.exists()}`);
       if (snapshot.exists()) {
-        const drawing = snapshot.data() as DrawingData;
-        console.log(`[${Date.now()}] Drawing data: ${drawing.strokes?.length} strokes, sender: ${drawing.senderId}`);
+        const rawData = snapshot.data();
+        console.log(`[${Date.now()}] Drawing data received, encrypted: ${rawData.encrypted}`);
+
+        let drawing: DrawingData;
+
+        if (rawData.encrypted && rawData.encryptedData) {
+          // Decrypt the drawing data
+          console.log(`[${Date.now()}] Decrypting E2E encrypted drawing...`);
+          try {
+            const decryptedJson = await decryptStrokes(rawData.encryptedData);
+            if (decryptedJson) {
+              const strokes = JSON.parse(decryptedJson) as Stroke[];
+              drawing = {
+                strokes,
+                senderId: rawData.senderId,
+                senderName: rawData.senderName,
+                timestamp: rawData.timestamp,
+                canvasWidth: rawData.canvasWidth,
+                canvasHeight: rawData.canvasHeight,
+                encrypted: true,
+              };
+              console.log(`[${Date.now()}] Decrypted ${strokes.length} strokes successfully`);
+            } else {
+              console.error(`[${Date.now()}] Failed to decrypt drawing - no shared secret`);
+              return;
+            }
+          } catch (err) {
+            console.error(`[${Date.now()}] Failed to decrypt drawing:`, err);
+            return;
+          }
+        } else {
+          // Unencrypted data (backwards compatibility)
+          drawing = rawData as DrawingData;
+          console.log(`[${Date.now()}] Using unencrypted drawing: ${drawing.strokes?.length} strokes`);
+        }
+
         console.log(`[${Date.now()}] Calling onDrawingReceived callback...`);
         try {
           onDrawingReceived(drawing);
@@ -186,19 +278,23 @@ export interface PairingInfo {
   partnerName: string;
   partnerId: string;
   partnerFcmToken: string;
+  partnerPublicKey?: string;
 }
 
 /**
  * Create a pairing in Firebase when Device B scans Device A's QR code
  * This stores the pairing info so Device A can be notified
+ * Includes public key exchange for E2E encryption
  */
 export async function createPairing(
   myDeviceId: string,
   myFcmToken: string,
   myName: string,
+  myPublicKey: string,
   partnerDeviceId: string,
   partnerFcmToken: string,
-  partnerName: string
+  partnerName: string,
+  partnerPublicKey: string
 ): Promise<string | null> {
   try {
     const db = getFirestoreDb();
@@ -207,18 +303,20 @@ export async function createPairing(
     const sortedIds = [myDeviceId, partnerDeviceId].sort();
     const pairingId = `pair_${sortedIds[0]}_${sortedIds[1]}`.replace(/[^a-zA-Z0-9_]/g, '');
 
-    console.log('Creating pairing:', { pairingId, myDeviceId, partnerDeviceId });
+    console.log('Creating pairing with E2E:', { pairingId, myDeviceId, partnerDeviceId });
 
     // Store pairing for Device A (the one who showed QR)
+    // Include Device B's public key so Device A can derive shared secret
     await setDoc(doc(db, 'pending_pairings', partnerDeviceId), {
       pairingId,
       partnerId: myDeviceId,
       partnerName: myName,
       partnerFcmToken: myFcmToken,
+      partnerPublicKey: myPublicKey, // Device B's public key for Device A
       createdAt: serverTimestamp(),
     });
 
-    // Store the main pairing document
+    // Store the main pairing document with both public keys
     await setDoc(doc(db, 'pairings', pairingId), {
       devices: [myDeviceId, partnerDeviceId],
       deviceTokens: {
@@ -229,10 +327,15 @@ export async function createPairing(
         [myDeviceId]: myName,
         [partnerDeviceId]: partnerName,
       },
+      devicePublicKeys: {
+        [myDeviceId]: myPublicKey,
+        [partnerDeviceId]: partnerPublicKey,
+      },
+      e2eEnabled: true,
       createdAt: serverTimestamp(),
     });
 
-    console.log('Pairing created successfully');
+    console.log('Pairing with E2E created successfully');
     return pairingId;
   } catch (error: any) {
     console.error('Error creating pairing:', error?.message || error);
@@ -242,6 +345,7 @@ export async function createPairing(
 
 /**
  * Listen for incoming pairing requests (when someone scans our QR code)
+ * Includes partner's public key for E2E encryption
  */
 export function listenForPairing(
   myDeviceId: string,
@@ -255,13 +359,14 @@ export function listenForPairing(
   const unsubscribe = onSnapshot(pendingRef, async (snapshot) => {
     if (snapshot.exists()) {
       const data = snapshot.data();
-      console.log('Pairing request received:', data);
+      console.log('Pairing request received with E2E:', data);
 
       onPaired({
         pairingId: data.pairingId,
         partnerName: data.partnerName,
         partnerId: data.partnerId,
         partnerFcmToken: data.partnerFcmToken,
+        partnerPublicKey: data.partnerPublicKey, // Partner's public key for E2E
       });
 
       // Clean up the pending pairing document

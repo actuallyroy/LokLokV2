@@ -20,6 +20,7 @@ import { colors, typography, spacing, borderRadius } from '../theme';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { useSettingsStore, usePairingStore } from '../store';
 import { notifyPartnerOfDisconnect } from '../services/strokeSync';
+import { clearEncryptionKeys } from '../services/crypto';
 
 type SettingsScreenNavigationProp = NativeStackNavigationProp<
   RootStackParamList,
@@ -45,7 +46,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
     setUserProfile,
   } = useSettingsStore();
 
-  const { isPaired, partnerName, pairingId, myDeviceId, disconnect } = usePairingStore();
+  const { isPaired, partnerName, pairingId, myDeviceId, isE2EEnabled, disconnect } = usePairingStore();
 
   const [isNameModalVisible, setIsNameModalVisible] = useState(false);
   const [newName, setNewName] = useState(userName);
@@ -86,6 +87,8 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
             if (pairingId && myDeviceId) {
               await notifyPartnerOfDisconnect(pairingId, myDeviceId);
             }
+            // Clear E2E encryption keys
+            await clearEncryptionKeys();
             // Then clear local state
             disconnect();
             Alert.alert('Disconnected', 'You have been disconnected from your partner.');
@@ -158,6 +161,14 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
               <Text style={styles.partnerBadgeText}>
                 Paired with {partnerName || 'Partner'}
               </Text>
+            </View>
+          )}
+
+          {/* E2E Encryption Status */}
+          {isPaired && isE2EEnabled && (
+            <View style={styles.e2eBadge}>
+              <MaterialIcons name="lock" size={12} color={colors.success} />
+              <Text style={styles.e2eBadgeText}>End-to-End Encrypted</Text>
             </View>
           )}
 
@@ -373,6 +384,21 @@ const styles = StyleSheet.create({
   partnerBadgeText: {
     ...typography.caption,
     color: colors.primary,
+  },
+  e2eBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(76, 175, 80, 0.1)',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+    borderRadius: borderRadius.full,
+    marginTop: spacing.sm,
+  },
+  e2eBadgeText: {
+    fontSize: 11,
+    color: colors.success,
+    fontWeight: '500',
   },
   profileActions: {
     flexDirection: 'row',

@@ -14,6 +14,12 @@ import { usePairingStore, useSettingsStore } from '../store';
 import { registerForPushNotifications } from '../services/notifications';
 import { getDeviceId, saveDeviceId } from '../services/backgroundTask';
 import { listenForPairing, notifyPartnerOfDisconnect } from '../services/strokeSync';
+import {
+  initializeEncryption,
+  deriveSharedSecret,
+  storeSharedSecret,
+  clearEncryptionKeys,
+} from '../services/crypto';
 
 type PairDeviceScreenNavigationProp = NativeStackNavigationProp<
   RootStackParamList,
@@ -27,12 +33,14 @@ interface PairDeviceScreenProps {
 export const PairDeviceScreen: React.FC<PairDeviceScreenProps> = ({
   navigation,
 }) => {
-  const { isPaired, partnerName, pairingId, myDeviceId, disconnect, setPaired, setMyDeviceId } = usePairingStore();
+  const { isPaired, partnerName, pairingId, myDeviceId, disconnect, setPaired, setMyDeviceId, setE2EEnabled } = usePairingStore();
   const { hasCompletedOnboarding, setOnboardingComplete, userName, setUserName } = useSettingsStore();
   const insets = useSafeAreaInsets();
   const viewShotRef = useRef<ViewShot>(null);
   const [deviceId, setDeviceIdState] = useState<string | null>(null);
   const [fcmToken, setFcmToken] = useState<string | null>(null);
+  const [publicKey, setPublicKey] = useState<string | null>(null);
+  const [secretKey, setSecretKey] = useState<string | null>(null);
   const [showNicknameModal, setShowNicknameModal] = useState(false);
   const [nicknameInput, setNicknameInput] = useState('');
   const [hasSetNickname, setHasSetNickname] = useState(false);
@@ -45,7 +53,7 @@ export const PairDeviceScreen: React.FC<PairDeviceScreenProps> = ({
     }
   }, [userName, hasSetNickname, isPaired]);
 
-  // Initialize device ID and FCM token
+  // Initialize device ID, FCM token, and encryption keys
   useEffect(() => {
     const init = async () => {
       // Get or create device ID
@@ -61,6 +69,12 @@ export const PairDeviceScreen: React.FC<PairDeviceScreenProps> = ({
       // Get FCM token
       const token = await registerForPushNotifications();
       setFcmToken(token);
+
+      // Initialize E2E encryption keypair
+      const keyPair = await initializeEncryption();
+      setPublicKey(keyPair.publicKey);
+      setSecretKey(keyPair.secretKey);
+      console.log('E2E keypair initialized');
     };
     init();
   }, [setMyDeviceId]);
@@ -76,9 +90,9 @@ export const PairDeviceScreen: React.FC<PairDeviceScreenProps> = ({
 
   // Listen for pairing requests (when someone scans our code)
   useEffect(() => {
-    if (!deviceId || isPaired) return;
+    if (!deviceId || isPaired || !secretKey) return;
 
-    const unsubscribe = listenForPairing(deviceId, (pairingData) => {
+    const unsubscribe = listenForPairing(deviceId, async (pairingData) => {
       // Someone paired with us!
       setPaired(
         pairingData.pairingId,
@@ -86,6 +100,19 @@ export const PairDeviceScreen: React.FC<PairDeviceScreenProps> = ({
         pairingData.partnerId,
         pairingData.partnerFcmToken
       );
+
+      // Derive and store shared secret for E2E encryption
+      if (pairingData.partnerPublicKey && secretKey) {
+        try {
+          const sharedSecret = deriveSharedSecret(secretKey, pairingData.partnerPublicKey);
+          await storeSharedSecret(sharedSecret);
+          setE2EEnabled(true, pairingData.partnerPublicKey);
+          console.log('E2E encryption established (receiver side)');
+        } catch (error) {
+          console.error('Failed to establish E2E encryption:', error);
+        }
+      }
+
       setOnboardingComplete();
       Alert.alert(
         'Paired!',
@@ -95,19 +122,20 @@ export const PairDeviceScreen: React.FC<PairDeviceScreenProps> = ({
     });
 
     return () => unsubscribe();
-  }, [deviceId, isPaired]);
+  }, [deviceId, isPaired, secretKey, setE2EEnabled]);
 
-  // Generate QR code data with device info
+  // Generate QR code data with device info and public key for E2E
   const pairingCode = useMemo(() => {
-    if (!deviceId) return '';
+    if (!deviceId || !publicKey) return '';
     const data = {
       type: 'loklok_pair',
       deviceId,
       fcmToken: fcmToken || '',
       userName: userName || 'Partner',
+      publicKey, // Include public key for E2E encryption
     };
     return JSON.stringify(data);
-  }, [deviceId, fcmToken, userName]);
+  }, [deviceId, fcmToken, userName, publicKey]);
 
   const handleScanCode = () => {
     navigation.navigate('QRScanner');
@@ -163,6 +191,8 @@ export const PairDeviceScreen: React.FC<PairDeviceScreenProps> = ({
             if (pairingId && myDeviceId) {
               await notifyPartnerOfDisconnect(pairingId, myDeviceId);
             }
+            // Clear E2E encryption keys
+            await clearEncryptionKeys();
             // Then clear local state
             disconnect();
           },

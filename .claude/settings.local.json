@@ -10,7 +10,8 @@
       "Bash(python:*)",
       "Bash(dir:*)",
       "Bash(findstr:*)",
-      "Bash(cmd /c \"dir \"\"C:\\\\Program Files\\\\Android\"\" /s /b 2>nul | findstr keytool\")"
+      "Bash(cmd /c \"dir \"\"C:\\\\Program Files\\\\Android\"\" /s /b 2>nul | findstr keytool\")",
+      "Bash(yarn add:*)"
     ]
   }
 }
