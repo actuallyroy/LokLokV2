@@ -9,7 +9,7 @@ buildscript {
         targetSdkVersion = Integer.parseInt(findProperty('android.targetSdkVersion') ?: '34')
         kotlinVersion = findProperty('android.kotlinVersion') ?: '1.9.25'
 
-        ndkVersion = "29.0.13599879"
+        ndkVersion = "27.1.12297006"
     }
     repositories {
         google()
