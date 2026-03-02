@@ -51,6 +51,19 @@ export async function setLockscreenWallpaper(imagePath: string): Promise<boolean
 }
 
 /**
+ * Clear the lockscreen wallpaper, restoring the original default
+ */
+export async function clearLockscreenWallpaper(): Promise<boolean> {
+  if (!WallpaperNativeModule) return false;
+  try {
+    return await WallpaperNativeModule.clearLockscreenWallpaper();
+  } catch (error) {
+    console.error('Error clearing lockscreen wallpaper:', error);
+    return false;
+  }
+}
+
+/**
  * Get screen dimensions for proper aspect ratio matching
  */
 export async function getScreenDimensions(): Promise<ScreenDimensions | null> {
@@ -145,6 +158,7 @@ export async function requestBatteryOptimizationBypass(): Promise<boolean> {
 export default {
   getWallpaper,
   setLockscreenWallpaper,
+  clearLockscreenWallpaper,
   getScreenDimensions,
   compositeAndSetLockscreen,
   startSyncService,

@@ -11,12 +11,15 @@ interface CanvasState {
   brushSize: number;
   selectedTool: Tool;
   customColors: string[];
+  isDraft: boolean;
 
   // Actions
   setStrokes: (strokes: Stroke[]) => void;
   addStroke: (stroke: Stroke) => void;
+  mergeStrokes: (incomingStrokes: Stroke[]) => void;
   undoLastStroke: () => void;
   clearCanvas: () => void;
+  markAsSent: () => void;
   setCurrentColor: (color: string) => void;
   setBrushSize: (size: number) => void;
   setSelectedTool: (tool: Tool) => void;
@@ -33,19 +36,30 @@ export const useCanvasStore = create<CanvasState>()(
       brushSize: 15,
       selectedTool: 'brush',
       customColors: [],
+      isDraft: false,
 
       // Actions
-      setStrokes: (strokes) => set({ strokes }),
+      setStrokes: (strokes) => set({ strokes, isDraft: true }),
 
       addStroke: (stroke) =>
-        set((state) => ({ strokes: [...state.strokes, stroke] })),
+        set((state) => ({ strokes: [...state.strokes, stroke], isDraft: true })),
+
+      mergeStrokes: (incomingStrokes) =>
+        set((state) => {
+          const existingIds = new Set(state.strokes.map((s) => s.id));
+          const newStrokes = incomingStrokes.filter((s) => !existingIds.has(s.id));
+          return { strokes: [...state.strokes, ...newStrokes] };
+        }),
 
       undoLastStroke: () =>
         set((state) => ({
           strokes: state.strokes.slice(0, -1),
+          isDraft: state.strokes.length > 1,
         })),
 
-      clearCanvas: () => set({ strokes: [] }),
+      clearCanvas: () => set({ strokes: [], isDraft: false }),
+
+      markAsSent: () => set({ isDraft: false }),
 
       setCurrentColor: (color) => set({ currentColor: color }),
 

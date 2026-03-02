@@ -62,6 +62,25 @@ class WallpaperModule : Module() {
             setLockscreenWallpaperFromPath(context, imagePath)
         }
 
+        // Clear lockscreen wallpaper (restore to default/home wallpaper)
+        AsyncFunction("clearLockscreenWallpaper") {
+            val context = appContext.reactContext ?: return@AsyncFunction false
+            try {
+                val wallpaperManager = WallpaperManager.getInstance(context)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                    wallpaperManager.clear(WallpaperManager.FLAG_LOCK)
+                    Log.d(TAG, "Lockscreen wallpaper cleared, restored to default")
+                    true
+                } else {
+                    Log.d(TAG, "clear(FLAG_LOCK) not available pre-N")
+                    false
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error clearing lockscreen wallpaper: ${e.message}")
+                false
+            }
+        }
+
         // Get screen dimensions for proper aspect ratio
         AsyncFunction("getScreenDimensions") {
             val context = appContext.reactContext ?: return@AsyncFunction null

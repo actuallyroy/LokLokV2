@@ -188,7 +188,7 @@ export const SharedCanvasScreen: React.FC<SharedCanvasScreenProps> = ({
           // Only load if it's from partner, not from me
           if (drawing.senderId !== myDeviceId && drawing.strokes.length > 0) {
             console.log(`[${Date.now()}] Received drawing from partner: ${drawing.strokes.length} strokes`);
-            setStrokes(drawing.strokes);
+            mergeStrokes(drawing.strokes);
 
             // Auto-apply if setting is enabled
             if (autoApplyDrawings) {
@@ -225,7 +225,7 @@ export const SharedCanvasScreen: React.FC<SharedCanvasScreenProps> = ({
         console.log(`[${Date.now()}] Sync service stopped on cleanup`);
       });
     };
-  }, [isPaired, pairingId, setStrokes, autoApplyDrawings]);
+  }, [isPaired, pairingId, mergeStrokes, autoApplyDrawings]);
 
   // Pick wallpaper from gallery
   const pickWallpaperFromGallery = async () => {
@@ -254,12 +254,15 @@ export const SharedCanvasScreen: React.FC<SharedCanvasScreenProps> = ({
     brushSize,
     selectedTool,
     customColors,
+    isDraft,
     setStrokes,
     setCurrentColor,
     setBrushSize,
     setSelectedTool,
     undoLastStroke,
     clearCanvas,
+    markAsSent,
+    mergeStrokes,
     addCustomColor,
     removeCustomColor,
   } = useCanvasStore();
@@ -316,10 +319,7 @@ export const SharedCanvasScreen: React.FC<SharedCanvasScreenProps> = ({
   }, []);
 
   const handleDone = useCallback(async () => {
-    if (strokes.length === 0) {
-      navigation.goBack();
-      return;
-    }
+    if (strokes.length === 0) return;
 
     // If paired, send to partner; otherwise save to own lockscreen
     const action = isPaired && pairingId ? 'send' : 'save';
@@ -380,6 +380,21 @@ export const SharedCanvasScreen: React.FC<SharedCanvasScreenProps> = ({
         await saveBackgroundImageUri(wallpaperUri);
       }
 
+      // Also apply to own lockscreen
+      try {
+        const uri = await captureRef(canvasRef, {
+          format: 'png',
+          quality: 1,
+          result: 'tmpfile',
+          width: CAPTURE_WIDTH,
+          height: CAPTURE_HEIGHT,
+        });
+        await setLockscreenWallpaper(uri);
+      } catch (e) {
+        console.error('Error applying to own lockscreen:', e);
+      }
+
+      markAsSent();
       showToastNotification(`Sent to ${partnerName || 'your partner'}!`);
     } catch (error) {
       console.error('Error sending to partner:', error);
@@ -534,7 +549,6 @@ export const SharedCanvasScreen: React.FC<SharedCanvasScreenProps> = ({
       <View style={{ paddingTop: insets.top }}>
         <Header
           title="Shared Canvas"
-          onBack={() => navigation.goBack()}
           rightElement={
             <TouchableOpacity
               onPress={() => navigation.navigate('Settings')}
@@ -613,6 +627,14 @@ export const SharedCanvasScreen: React.FC<SharedCanvasScreenProps> = ({
             >
               <MaterialIcons name="image" size={20} color={colors.white} />
             </TouchableOpacity>
+          )}
+
+          {/* Draft Badge - OUTSIDE canvas ref so it's not captured */}
+          {isDraft && strokes.length > 0 && (
+            <View style={styles.draftBadge}>
+              <MaterialIcons name="edit" size={12} color={colors.white} />
+              <Text style={styles.draftBadgeText}>Draft</Text>
+            </View>
           )}
         </View>
 
@@ -725,6 +747,24 @@ const styles = StyleSheet.create({
   },
   drawingLayer: {
     ...StyleSheet.absoluteFillObject,
+  },
+  draftBadge: {
+    position: 'absolute',
+    top: spacing.sm,
+    left: spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(255, 152, 0, 0.85)',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+    borderRadius: borderRadius.full,
+    zIndex: 10,
+  },
+  draftBadgeText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.white,
   },
   changeBackgroundButton: {
     position: 'absolute',

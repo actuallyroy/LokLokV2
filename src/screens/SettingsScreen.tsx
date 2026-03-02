@@ -22,6 +22,7 @@ import { RootStackParamList } from '../navigation/AppNavigator';
 import { useSettingsStore, usePairingStore } from '../store';
 import { notifyPartnerOfDisconnect } from '../services/strokeSync';
 import { clearEncryptionKeys } from '../services/crypto';
+import { clearLockscreenWallpaper } from '../../modules/wallpaper';
 
 type SettingsScreenNavigationProp = NativeStackNavigationProp<
   RootStackParamList,
@@ -126,6 +127,27 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
     }
   }, [userName, setUserProfile]);
 
+  const handleResetLockscreen = useCallback(() => {
+    Alert.alert(
+      'Reset Lockscreen',
+      'This will restore your lockscreen to the original wallpaper before LokLok modified it.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Reset',
+          onPress: async () => {
+            const success = await clearLockscreenWallpaper();
+            if (success) {
+              Alert.alert('Done', 'Your lockscreen has been restored.');
+            } else {
+              Alert.alert('Error', 'Failed to reset lockscreen.');
+            }
+          },
+        },
+      ]
+    );
+  }, []);
+
   const handleSupport = useCallback(() => {
     Linking.openURL('mailto:support@loklok.app?subject=LokLok Support Request');
   }, []);
@@ -218,6 +240,15 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                 When enabled, drawings from your partner will automatically update your lockscreen wallpaper. You can always undo this from the canvas screen.
               </Text>
             </View>
+            <SettingsItem
+              icon="restore"
+              iconColor="#2196F3"
+              iconBackgroundColor="rgba(33, 150, 243, 0.15)"
+              title="Reset Lockscreen"
+              subtitle="Restore your original lockscreen without drawings"
+              showChevron
+              onPress={handleResetLockscreen}
+            />
           </View>
         </View>
 
