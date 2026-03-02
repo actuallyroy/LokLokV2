@@ -12,6 +12,7 @@ import {
   Modal,
   Pressable,
   ScrollView,
+  TextInput,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -103,6 +104,11 @@ export const SharedCanvasScreen: React.FC<SharedCanvasScreenProps> = ({
 
   // Color picker modal state
   const [showColorPickerModal, setShowColorPickerModal] = useState(false);
+
+  // Text input modal state
+  const [showTextInput, setShowTextInput] = useState(false);
+  const [textInputValue, setTextInputValue] = useState('');
+  const [pendingTextPosition, setPendingTextPosition] = useState<{ x: number; y: number } | null>(null);
 
   const showToastNotification = useCallback((message: string) => {
     setToastMessage(message);
@@ -296,6 +302,35 @@ export const SharedCanvasScreen: React.FC<SharedCanvasScreenProps> = ({
     setCurrentColor(color);
     setShowColorPickerModal(false);
   }, [addCustomColor, setCurrentColor]);
+
+  const handleTextTap = useCallback((x: number, y: number) => {
+    setPendingTextPosition({ x, y });
+    setTextInputValue('');
+    setShowTextInput(true);
+  }, []);
+
+  const handleTextConfirm = useCallback(() => {
+    if (!pendingTextPosition || !textInputValue.trim()) {
+      setShowTextInput(false);
+      setPendingTextPosition(null);
+      return;
+    }
+    const fontSize = Math.max(brushSize * 1.5, 16);
+    const textStroke: import('../components/canvas').Stroke = {
+      id: `stroke_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      path: '',
+      color: currentColor,
+      strokeWidth: brushSize,
+      type: 'text',
+      text: textInputValue.trim(),
+      x: pendingTextPosition.x,
+      y: pendingTextPosition.y,
+      fontSize,
+    };
+    setStrokes([...strokes, textStroke]);
+    setShowTextInput(false);
+    setPendingTextPosition(null);
+  }, [pendingTextPosition, textInputValue, brushSize, currentColor, strokes, setStrokes]);
 
   const handleConfirmAction = useCallback(() => {
     if (dontShowAgain) {
@@ -545,6 +580,48 @@ export const SharedCanvasScreen: React.FC<SharedCanvasScreenProps> = ({
         </View>
       </Modal>
 
+      {/* Text Input Modal */}
+      <Modal
+        visible={showTextInput}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowTextInput(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Add Text</Text>
+            <TextInput
+              style={styles.textInput}
+              value={textInputValue}
+              onChangeText={setTextInputValue}
+              placeholder="Type your text..."
+              placeholderTextColor={colors.textTertiary}
+              autoFocus
+              multiline
+              maxLength={200}
+            />
+            <View style={styles.modalButtons}>
+              <Pressable
+                style={styles.modalButtonCancel}
+                onPress={() => {
+                  setShowTextInput(false);
+                  setPendingTextPosition(null);
+                }}
+              >
+                <Text style={styles.modalButtonCancelText}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.modalButtonConfirm, !textInputValue.trim() && styles.disabledButton]}
+                onPress={handleTextConfirm}
+                disabled={!textInputValue.trim()}
+              >
+                <Text style={styles.modalButtonConfirmText}>Place</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       {/* Header */}
       <View style={{ paddingTop: insets.top }}>
         <Header
@@ -614,6 +691,8 @@ export const SharedCanvasScreen: React.FC<SharedCanvasScreenProps> = ({
                   currentColor={currentColor}
                   brushSize={brushSize}
                   isEraser={selectedTool === 'eraser'}
+                  isTextTool={selectedTool === 'text'}
+                  onTextTap={handleTextTap}
                 />
               </View>
             )}
@@ -952,5 +1031,18 @@ const styles = StyleSheet.create({
   colorModalCancelText: {
     ...typography.button,
     color: colors.textSecondary,
+  },
+  textInput: {
+    backgroundColor: colors.cardDarker,
+    borderRadius: borderRadius.default,
+    padding: spacing.md,
+    color: colors.textPrimary,
+    fontSize: 16,
+    marginBottom: spacing.lg,
+    minHeight: 48,
+    maxHeight: 120,
+  },
+  disabledButton: {
+    opacity: 0.5,
   },
 });

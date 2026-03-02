@@ -10,6 +10,7 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.BlurMaskFilter
+import android.graphics.Typeface
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
 import android.net.Uri
@@ -37,6 +38,21 @@ class StrokeRecord : Record {
 
     @Field
     var strokeWidth: Double = 5.0
+
+    @Field
+    var type: String? = null  // "brush" or "text", defaults to brush if null
+
+    @Field
+    var text: String? = null
+
+    @Field
+    var x: Double? = null
+
+    @Field
+    var y: Double? = null
+
+    @Field
+    var fontSize: Double? = null
 }
 
 // Parsed point from SVG path
@@ -375,41 +391,65 @@ class WallpaperModule : Module() {
 
             // Draw each stroke
             for (stroke in strokes) {
-                // Parse SVG path string into points
-                val points = parseSvgPath(stroke.path)
-                if (points.size < 2) {
-                    Log.d(TAG, "Skipping stroke with ${points.size} points, path: ${stroke.path.take(50)}")
-                    continue
-                }
+                if (stroke.type == "text") {
+                    // Render text stroke
+                    val textContent = stroke.text ?: continue
+                    val textX = stroke.x ?: continue
+                    val textY = stroke.y ?: continue
+                    val fontSize = stroke.fontSize ?: 20.0
 
-                Log.d(TAG, "Drawing stroke with ${points.size} points, color: ${stroke.color}, width: ${stroke.strokeWidth}")
+                    val textPaint = Paint().apply {
+                        color = parseColor(stroke.color)
+                        textSize = fontSize.toFloat() * scaleX
+                        typeface = Typeface.DEFAULT_BOLD
+                        isAntiAlias = true
+                        style = Paint.Style.FILL
+                    }
 
-                val paint = Paint().apply {
-                    color = parseColor(stroke.color)
-                    strokeWidth = stroke.strokeWidth.toFloat() * scaleX
-                    style = Paint.Style.STROKE
-                    strokeCap = Paint.Cap.ROUND
-                    strokeJoin = Paint.Join.ROUND
-                    isAntiAlias = true
-                }
-
-                // Create path from parsed points
-                val path = Path()
-                val firstPoint = points[0]
-                path.moveTo(
-                    firstPoint.x * scaleX,
-                    firstPoint.y * scaleY
-                )
-
-                for (i in 1 until points.size) {
-                    val point = points[i]
-                    path.lineTo(
-                        point.x * scaleX,
-                        point.y * scaleY
+                    canvas.drawText(
+                        textContent,
+                        textX.toFloat() * scaleX,
+                        textY.toFloat() * scaleY,
+                        textPaint
                     )
-                }
+                    Log.d(TAG, "Drew text '$textContent' at (${textX * scaleX}, ${textY * scaleY}), size: ${fontSize * scaleX}")
+                } else {
+                    // Render brush stroke (default)
+                    val points = parseSvgPath(stroke.path)
+                    if (points.size < 2) {
+                        Log.d(TAG, "Skipping stroke with ${points.size} points, path: ${stroke.path.take(50)}")
+                        continue
+                    }
 
-                canvas.drawPath(path, paint)
+                    Log.d(TAG, "Drawing stroke with ${points.size} points, color: ${stroke.color}, width: ${stroke.strokeWidth}")
+
+                    val paint = Paint().apply {
+                        color = parseColor(stroke.color)
+                        strokeWidth = stroke.strokeWidth.toFloat() * scaleX
+                        style = Paint.Style.STROKE
+                        strokeCap = Paint.Cap.ROUND
+                        strokeJoin = Paint.Join.ROUND
+                        isAntiAlias = true
+                    }
+
+                    // Create path from parsed points
+                    val path = Path()
+                    val firstPoint = points[0]
+                    path.moveTo(
+                        firstPoint.x * scaleX,
+                        firstPoint.y * scaleY
+                    )
+
+                    for (i in 1 until points.size) {
+                        val point = points[i]
+                        path.lineTo(
+                            point.x * scaleX,
+                            point.y * scaleY
+                        )
+                    }
+
+                    canvas.drawPath(path, paint)
+                }
             }
 
             // Clean up original bitmaps

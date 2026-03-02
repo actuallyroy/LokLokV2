@@ -20,6 +20,11 @@ export interface StrokeData {
   path: string;  // SVG path string like "M 10 20 L 30 40"
   color: string;
   strokeWidth: number;
+  type?: 'brush' | 'text';
+  text?: string;
+  x?: number;
+  y?: number;
+  fontSize?: number;
 }
 
 /**

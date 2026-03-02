@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { colors, typography, spacing, borderRadius } from '../../theme';
 
-export type Tool = 'brush' | 'eraser' | 'delete';
+export type Tool = 'brush' | 'eraser' | 'text' | 'delete';
 
 interface ToolBarProps {
   selectedTool: Tool;
@@ -25,6 +25,7 @@ export const ToolBar: React.FC<ToolBarProps> = ({
   const tools: { id: Tool; icon: keyof typeof MaterialIcons.glyphMap }[] = [
     { id: 'brush', icon: 'brush' },
     { id: 'eraser', icon: 'auto-fix-high' },
+    { id: 'text', icon: 'text-fields' },
     { id: 'delete', icon: 'delete-outline' },
   ];
 

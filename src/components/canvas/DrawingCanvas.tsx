@@ -4,7 +4,7 @@ import {
   GestureDetector,
   Gesture,
 } from 'react-native-gesture-handler';
-import Svg, { Path } from 'react-native-svg';
+import Svg, { Path, Text as SvgText } from 'react-native-svg';
 import { colors } from '../../theme';
 
 export interface Stroke {
@@ -12,6 +12,11 @@ export interface Stroke {
   path: string;
   color: string;
   strokeWidth: number;
+  type?: 'brush' | 'text';
+  text?: string;
+  x?: number;
+  y?: number;
+  fontSize?: number;
 }
 
 // Parse SVG path string to extract points
@@ -50,6 +55,8 @@ interface DrawingCanvasProps {
   currentColor: string;
   brushSize: number;
   isEraser: boolean;
+  isTextTool?: boolean;
+  onTextTap?: (x: number, y: number) => void;
   backgroundImage?: string;
 }
 
@@ -61,6 +68,8 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
   currentColor,
   brushSize,
   isEraser,
+  isTextTool,
+  onTextTap,
 }) => {
   const [currentPath, setCurrentPath] = useState<string>('');
   const pathRef = useRef<string>('');
@@ -77,6 +86,16 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
     const point = { x, y };
 
     const remainingStrokes = strokesRef.current.filter((stroke) => {
+      if (stroke.type === 'text') {
+        // For text strokes, check if eraser is near the text position
+        if (stroke.x !== undefined && stroke.y !== undefined) {
+          const dx = point.x - stroke.x;
+          const dy = point.y - stroke.y;
+          const textRadius = (stroke.fontSize || 20) * 0.6;
+          return dx * dx + dy * dy >= (eraserRadius + textRadius) * (eraserRadius + textRadius);
+        }
+        return true;
+      }
       const strokePoints = parsePathToPoints(stroke.path);
       // Keep the stroke if the eraser is NOT near it
       return !isPointNearStroke(point, strokePoints, eraserRadius + stroke.strokeWidth / 2);
@@ -87,8 +106,17 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
     }
   }, [brushSize, onStrokesChange]);
 
+  const tapGesture = Gesture.Tap()
+    .onEnd((event) => {
+      if (isTextTool && onTextTap) {
+        onTextTap(event.x, event.y);
+      }
+    })
+    .runOnJS(true);
+
   const panGesture = Gesture.Pan()
     .onStart((event) => {
+      if (isTextTool) return;
       const { x, y } = event;
       if (isEraser) {
         eraseAtPoint(x, y);
@@ -98,6 +126,7 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
       }
     })
     .onUpdate((event) => {
+      if (isTextTool) return;
       const { x, y } = event;
       if (isEraser) {
         eraseAtPoint(x, y);
@@ -114,6 +143,7 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
       }
     })
     .onEnd(() => {
+      if (isTextTool) return;
       if (!isEraser && pathRef.current) {
         const newStroke: Stroke = {
           id: generateId(),
@@ -129,23 +159,38 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
     .minDistance(1)
     .runOnJS(true);
 
+  const composedGesture = Gesture.Race(tapGesture, panGesture);
+
   return (
     <View style={styles.container}>
-      <GestureDetector gesture={panGesture}>
+      <GestureDetector gesture={composedGesture}>
         <View style={styles.canvasContainer}>
           <Svg style={styles.svg}>
-            {/* Render all strokes - simple and fast */}
-            {strokes.map((stroke) => (
-              <Path
-                key={stroke.id}
-                d={stroke.path}
-                stroke={stroke.color}
-                strokeWidth={stroke.strokeWidth}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                fill="none"
-              />
-            ))}
+            {/* Render all strokes */}
+            {strokes.map((stroke) =>
+              stroke.type === 'text' ? (
+                <SvgText
+                  key={stroke.id}
+                  x={stroke.x}
+                  y={stroke.y}
+                  fill={stroke.color}
+                  fontSize={stroke.fontSize || 20}
+                  fontWeight="bold"
+                >
+                  {stroke.text}
+                </SvgText>
+              ) : (
+                <Path
+                  key={stroke.id}
+                  d={stroke.path}
+                  stroke={stroke.color}
+                  strokeWidth={stroke.strokeWidth}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  fill="none"
+                />
+              )
+            )}
             {/* Current stroke/eraser preview */}
             {currentPath && (
               <Path
