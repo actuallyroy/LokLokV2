@@ -372,12 +372,6 @@ class WallpaperModule : Module() {
                     strokeCap = Paint.Cap.ROUND
                     strokeJoin = Paint.Join.ROUND
                     isAntiAlias = true
-
-                    // Add neon glow effect
-                    maskFilter = BlurMaskFilter(
-                        stroke.strokeWidth.toFloat() * scaleX * 0.5f,
-                        BlurMaskFilter.Blur.NORMAL
-                    )
                 }
 
                 // Create path from parsed points
@@ -396,19 +390,7 @@ class WallpaperModule : Module() {
                     )
                 }
 
-                // Draw glow layer
                 canvas.drawPath(path, paint)
-
-                // Draw solid core on top
-                val corePaint = Paint().apply {
-                    color = parseColor(stroke.color)
-                    strokeWidth = stroke.strokeWidth.toFloat() * scaleX * 0.6f
-                    style = Paint.Style.STROKE
-                    strokeCap = Paint.Cap.ROUND
-                    strokeJoin = Paint.Join.ROUND
-                    isAntiAlias = true
-                }
-                canvas.drawPath(path, corePaint)
             }
 
             // Clean up original bitmaps

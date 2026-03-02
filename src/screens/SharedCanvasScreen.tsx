@@ -88,6 +88,7 @@ export const SharedCanvasScreen: React.FC<SharedCanvasScreenProps> = ({
   const [isSaving, setIsSaving] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const canvasRef = useRef<View>(null);
+  const [canvasDimensions, setCanvasDimensions] = useState({ width: SCREEN_WIDTH, height: SCREEN_HEIGHT });
 
   const { userName, autoApplyDrawings, skipSendConfirmation, setSkipSendConfirmation } = useSettingsStore();
 
@@ -108,11 +109,8 @@ export const SharedCanvasScreen: React.FC<SharedCanvasScreenProps> = ({
     setShowToast(true);
     setTimeout(() => {
       setShowToast(false);
-      if (navigation.canGoBack()) {
-        navigation.goBack();
-      }
     }, 2000);
-  }, [navigation]);
+  }, []);
 
   // Use device screen aspect ratio (how lockscreen actually appears)
   const screenAspectRatio = SCREEN_WIDTH / SCREEN_HEIGHT;
@@ -352,13 +350,14 @@ export const SharedCanvasScreen: React.FC<SharedCanvasScreenProps> = ({
       const myDeviceId = await getDeviceId() || 'unknown';
 
       // Send strokes to Firestore (no image needed - receiver composites locally)
+      // Use actual canvas dimensions so native compositing scales correctly
       const success = await sendDrawingToPartner(
         pairingId,
         strokes,
         myDeviceId,
         userName,
-        SCREEN_WIDTH,
-        SCREEN_HEIGHT
+        canvasDimensions.width,
+        canvasDimensions.height
       );
 
       if (!success) {
@@ -570,6 +569,10 @@ export const SharedCanvasScreen: React.FC<SharedCanvasScreenProps> = ({
               },
             ]}
             collapsable={false}
+            onLayout={(e) => {
+              const { width, height } = e.nativeEvent.layout;
+              setCanvasDimensions({ width, height });
+            }}
           >
             {/* Wallpaper Background */}
             {wallpaperUri ? (

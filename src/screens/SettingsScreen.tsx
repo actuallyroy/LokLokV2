@@ -15,6 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as ImagePicker from 'expo-image-picker';
+import Constants from 'expo-constants';
 import { Header, Toggle, Avatar, SettingsItem } from '../components/common';
 import { colors, typography, spacing, borderRadius } from '../theme';
 import { RootStackParamList } from '../navigation/AppNavigator';
@@ -266,7 +267,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
         </View>
 
         {/* Version */}
-        <Text style={styles.versionText}>LokLok v1.0.0</Text>
+        <Text style={styles.versionText}>LokLok v{Constants.expoConfig?.version ?? '1.0.0'}</Text>
         <Text style={styles.copyrightText}>Made with love for couples</Text>
       </ScrollView>
 
