@@ -41,7 +41,7 @@ export const useSettingsStore = create<SettingsState>()(
   persist(
     (set) => ({
       // Initial state
-      autoApplyDrawings: true,
+      autoApplyDrawings: false,
       notificationAlerts: true,
       defaultBrushStyle: 'neon',
       defaultInkColor: colors.primary,

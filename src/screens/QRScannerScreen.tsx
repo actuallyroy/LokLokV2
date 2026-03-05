@@ -129,13 +129,22 @@ export const QRScannerScreen: React.FC<QRScannerScreenProps> = ({
           );
           setOnboardingComplete();
 
+          // Ask user if they want to enable auto-apply
           Alert.alert(
             'Pairing Successful!',
-            `You are now connected with ${parsed.userName || 'your partner'}.`,
+            `You are now connected with ${parsed.userName || 'your partner'}.\n\nWould you like to automatically update your lockscreen when your partner sends you a drawing?`,
             [
               {
-                text: 'Start Drawing',
+                text: 'Not Now',
+                style: 'cancel',
                 onPress: () => navigation.replace('SharedCanvas'),
+              },
+              {
+                text: 'Enable',
+                onPress: () => {
+                  useSettingsStore.getState().setAutoApplyDrawings(true);
+                  navigation.replace('SharedCanvas');
+                },
               },
             ]
           );

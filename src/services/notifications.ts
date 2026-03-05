@@ -39,20 +39,25 @@ export async function registerForPushNotifications(): Promise<string | null> {
     return null;
   }
 
-  // Get the FCM token
+  // Get the Expo push token
   try {
     const projectId = Constants.expoConfig?.extra?.eas?.projectId;
 
-    if (projectId) {
-      token = (await Notifications.getExpoPushTokenAsync({ projectId })).data;
-    } else {
-      // Fallback for development
-      token = (await Notifications.getDevicePushTokenAsync()).data;
-    }
+    // Always try to get Expo push token - required for Expo's push service
+    const tokenData = await Notifications.getExpoPushTokenAsync({
+      projectId: projectId || undefined,
+    });
+    token = tokenData.data;
 
-    console.log('Push token:', token);
+    console.log('Expo push token:', token);
+
+    // Validate it's an Expo token
+    if (!token.startsWith('ExponentPushToken[')) {
+      console.warn('Got non-Expo token, push notifications may not work:', token);
+    }
   } catch (error) {
-    console.error('Error getting push token:', error);
+    console.error('Error getting Expo push token:', error);
+    // Don't fall back to native token - it won't work with Expo's push service
   }
 
   // Android specific channel setup

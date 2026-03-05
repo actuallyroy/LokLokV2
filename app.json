@@ -59,6 +59,12 @@
         }
       ],
       "./plugins/withProguardRules.js"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "e758f12d-fd75-4b55-8f5b-670c6670459d"
+      }
+    },
+    "owner": "actuallyroy"
   }
 }

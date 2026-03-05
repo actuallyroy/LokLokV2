@@ -95,9 +95,13 @@ export const PairDeviceScreen: React.FC<PairDeviceScreenProps> = ({
 
   // Listen for pairing requests (when someone scans our code)
   useEffect(() => {
-    if (!deviceId || isPaired || !secretKey) return;
+    if (!deviceId || isPaired) return;
+
+    console.log('Setting up pairing listener for device:', deviceId);
 
     const unsubscribe = listenForPairing(deviceId, async (pairingData) => {
+      console.log('Pairing request received!', pairingData);
+
       // Someone paired with us!
       setPaired(
         pairingData.pairingId,
@@ -107,9 +111,11 @@ export const PairDeviceScreen: React.FC<PairDeviceScreenProps> = ({
       );
 
       // Derive and store shared secret for E2E encryption
-      if (pairingData.partnerPublicKey && secretKey) {
+      // Get the secret key fresh in case it wasn't ready when listener was set up
+      const currentSecretKey = secretKey || (await initializeEncryption()).secretKey;
+      if (pairingData.partnerPublicKey && currentSecretKey) {
         try {
-          const sharedSecret = deriveSharedSecret(secretKey, pairingData.partnerPublicKey);
+          const sharedSecret = deriveSharedSecret(currentSecretKey, pairingData.partnerPublicKey);
           await storeSharedSecret(sharedSecret);
           setE2EEnabled(true, pairingData.partnerPublicKey);
           console.log('E2E encryption established (receiver side)');
@@ -119,10 +125,25 @@ export const PairDeviceScreen: React.FC<PairDeviceScreenProps> = ({
       }
 
       setOnboardingComplete();
+
+      // Ask user if they want to enable auto-apply
       Alert.alert(
         'Paired!',
-        `You are now connected with ${pairingData.partnerName}`,
-        [{ text: 'Start Drawing', onPress: () => navigation.replace('SharedCanvas') }]
+        `You are now connected with ${pairingData.partnerName}.\n\nWould you like to automatically update your lockscreen when your partner sends you a drawing?`,
+        [
+          {
+            text: 'Not Now',
+            style: 'cancel',
+            onPress: () => navigation.replace('SharedCanvas'),
+          },
+          {
+            text: 'Enable',
+            onPress: () => {
+              useSettingsStore.getState().setAutoApplyDrawings(true);
+              navigation.replace('SharedCanvas');
+            },
+          },
+        ]
       );
     });
 

@@ -105,10 +105,20 @@ export const SharedCanvasScreen: React.FC<SharedCanvasScreenProps> = ({
   // Color picker modal state
   const [showColorPickerModal, setShowColorPickerModal] = useState(false);
 
-  // Text input modal state
+  // Text input modal state (for new text)
   const [showTextInput, setShowTextInput] = useState(false);
   const [textInputValue, setTextInputValue] = useState('');
   const [pendingTextPosition, setPendingTextPosition] = useState<{ x: number; y: number } | null>(null);
+
+  // Text edit modal state (for existing text)
+  const [showTextEditModal, setShowTextEditModal] = useState(false);
+  const [editingTextStroke, setEditingTextStroke] = useState<Stroke | null>(null);
+  const [editTextValue, setEditTextValue] = useState('');
+  const [editTextColor, setEditTextColor] = useState('#ffffff');
+  const [editTextSize, setEditTextSize] = useState(20);
+
+  // Text selection state
+  const [selectedTextId, setSelectedTextId] = useState<string | null>(null);
 
   const showToastNotification = useCallback((message: string) => {
     setToastMessage(message);
@@ -284,6 +294,8 @@ export const SharedCanvasScreen: React.FC<SharedCanvasScreenProps> = ({
 
   const handleToolSelect = useCallback(
     (tool: Tool) => {
+      // Deselect any selected text when switching tools
+      setSelectedTextId(null);
       if (tool === 'delete') {
         clearCanvas();
       } else {
@@ -331,6 +343,97 @@ export const SharedCanvasScreen: React.FC<SharedCanvasScreenProps> = ({
     setShowTextInput(false);
     setPendingTextPosition(null);
   }, [pendingTextPosition, textInputValue, brushSize, currentColor, strokes, setStrokes]);
+
+  // Handler for editing existing text
+  const handleTextEdit = useCallback((stroke: Stroke) => {
+    setEditingTextStroke(stroke);
+    setEditTextValue(stroke.text || '');
+    setEditTextColor(stroke.color);
+    setEditTextSize(stroke.fontSize || 20);
+    setShowTextEditModal(true);
+  }, []);
+
+  const handleTextEditConfirm = useCallback(() => {
+    if (!editingTextStroke || !editTextValue.trim()) {
+      setShowTextEditModal(false);
+      setEditingTextStroke(null);
+      return;
+    }
+
+    // Update the stroke in the strokes array
+    const updatedStrokes = strokes.map((s) =>
+      s.id === editingTextStroke.id
+        ? {
+            ...s,
+            text: editTextValue.trim(),
+            color: editTextColor,
+            fontSize: editTextSize,
+          }
+        : s
+    );
+    setStrokes(updatedStrokes);
+    setShowTextEditModal(false);
+    setEditingTextStroke(null);
+  }, [editingTextStroke, editTextValue, editTextColor, editTextSize, strokes, setStrokes]);
+
+  const handleTextDelete = useCallback(() => {
+    if (!editingTextStroke) return;
+
+    const updatedStrokes = strokes.filter((s) => s.id !== editingTextStroke.id);
+    setStrokes(updatedStrokes);
+    setShowTextEditModal(false);
+    setEditingTextStroke(null);
+    // Also clear selection if deleted text was selected
+    if (selectedTextId === editingTextStroke.id) {
+      setSelectedTextId(null);
+    }
+  }, [editingTextStroke, strokes, setStrokes, selectedTextId]);
+
+  // Handler for text selection
+  const handleTextSelect = useCallback((stroke: Stroke | null) => {
+    setSelectedTextId(stroke?.id || null);
+  }, []);
+
+  // Handler for moving text
+  const handleTextMove = useCallback((strokeId: string, x: number, y: number) => {
+    const updatedStrokes = strokes.map((s) =>
+      s.id === strokeId ? { ...s, x, y } : s
+    );
+    setStrokes(updatedStrokes);
+  }, [strokes, setStrokes]);
+
+  // Get the selected text stroke for formatting
+  const selectedTextStroke = selectedTextId
+    ? strokes.find((s) => s.id === selectedTextId && s.type === 'text')
+    : null;
+
+  // Handler for changing selected text color
+  const handleSelectedTextColorChange = useCallback((color: string) => {
+    if (!selectedTextId) return;
+    const updatedStrokes = strokes.map((s) =>
+      s.id === selectedTextId ? { ...s, color } : s
+    );
+    setStrokes(updatedStrokes);
+    setCurrentColor(color);
+  }, [selectedTextId, strokes, setStrokes, setCurrentColor]);
+
+  // Handler for changing selected text size
+  const handleSelectedTextSizeChange = useCallback((size: number) => {
+    if (!selectedTextId) return;
+    const updatedStrokes = strokes.map((s) =>
+      s.id === selectedTextId ? { ...s, fontSize: size } : s
+    );
+    setStrokes(updatedStrokes);
+    setBrushSize(size);
+  }, [selectedTextId, strokes, setStrokes, setBrushSize]);
+
+  // Handler for deleting selected text
+  const handleDeleteSelectedText = useCallback(() => {
+    if (!selectedTextId) return;
+    const updatedStrokes = strokes.filter((s) => s.id !== selectedTextId);
+    setStrokes(updatedStrokes);
+    setSelectedTextId(null);
+  }, [selectedTextId, strokes, setStrokes]);
 
   const handleConfirmAction = useCallback(() => {
     if (dontShowAgain) {
@@ -622,6 +725,99 @@ export const SharedCanvasScreen: React.FC<SharedCanvasScreenProps> = ({
         </View>
       </Modal>
 
+      {/* Text Edit Modal */}
+      <Modal
+        visible={showTextEditModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowTextEditModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, styles.textEditModalContent]}>
+            <Text style={styles.modalTitle}>Edit Text</Text>
+
+            {/* Text Input */}
+            <TextInput
+              style={styles.textInput}
+              value={editTextValue}
+              onChangeText={setEditTextValue}
+              placeholder="Type your text..."
+              placeholderTextColor={colors.textTertiary}
+              autoFocus
+              multiline
+              maxLength={200}
+            />
+
+            {/* Color Selection */}
+            <Text style={styles.editSectionLabel}>Color</Text>
+            <View style={styles.editColorRow}>
+              {['#ff6b6b', '#ffa502', '#ffdd59', '#26de81', '#4bcffa', '#a55eea', '#ffffff'].map((color) => (
+                <TouchableOpacity
+                  key={color}
+                  style={[
+                    styles.editColorOption,
+                    { backgroundColor: color },
+                    editTextColor === color && styles.editColorSelected,
+                  ]}
+                  onPress={() => setEditTextColor(color)}
+                />
+              ))}
+            </View>
+
+            {/* Size Slider */}
+            <Text style={styles.editSectionLabel}>Size: {editTextSize}px</Text>
+            <View style={styles.editSizeRow}>
+              <TouchableOpacity
+                style={styles.editSizeButton}
+                onPress={() => setEditTextSize(Math.max(12, editTextSize - 4))}
+              >
+                <MaterialIcons name="remove" size={20} color={colors.textPrimary} />
+              </TouchableOpacity>
+              <View style={styles.editSizePreview}>
+                <Text style={[styles.editSizePreviewText, { fontSize: Math.min(editTextSize, 32) }]}>
+                  Aa
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={styles.editSizeButton}
+                onPress={() => setEditTextSize(Math.min(72, editTextSize + 4))}
+              >
+                <MaterialIcons name="add" size={20} color={colors.textPrimary} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Delete Button */}
+            <Pressable
+              style={styles.editDeleteButton}
+              onPress={handleTextDelete}
+            >
+              <MaterialIcons name="delete" size={20} color="#ff6b6b" />
+              <Text style={styles.editDeleteText}>Delete Text</Text>
+            </Pressable>
+
+            {/* Action Buttons */}
+            <View style={styles.modalButtons}>
+              <Pressable
+                style={styles.modalButtonCancel}
+                onPress={() => {
+                  setShowTextEditModal(false);
+                  setEditingTextStroke(null);
+                }}
+              >
+                <Text style={styles.modalButtonCancelText}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.modalButtonConfirm, !editTextValue.trim() && styles.disabledButton]}
+                onPress={handleTextEditConfirm}
+                disabled={!editTextValue.trim()}
+              >
+                <Text style={styles.modalButtonConfirmText}>Save</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       {/* Header */}
       <View style={{ paddingTop: insets.top }}>
         <Header
@@ -693,6 +889,10 @@ export const SharedCanvasScreen: React.FC<SharedCanvasScreenProps> = ({
                   isEraser={selectedTool === 'eraser'}
                   isTextTool={selectedTool === 'text'}
                   onTextTap={handleTextTap}
+                  onTextEdit={handleTextEdit}
+                  selectedTextId={selectedTextId}
+                  onTextSelect={handleTextSelect}
+                  onTextMove={handleTextMove}
                 />
               </View>
             )}
@@ -730,34 +930,104 @@ export const SharedCanvasScreen: React.FC<SharedCanvasScreenProps> = ({
 
       {/* Bottom Glass Panel */}
       <View style={[styles.bottomPanel, { paddingBottom: insets.bottom + spacing.sm }]}>
-        {/* Brush Size Slider */}
-        <BrushSizeSlider
-          value={brushSize}
-          onValueChange={setBrushSize}
-          minValue={1}
-          maxValue={50}
-        />
+        {selectedTextStroke ? (
+          // Text formatting mode
+          <>
+            {/* Text Size Slider - use same layout as brush slider */}
+            <BrushSizeSlider
+              value={selectedTextStroke.fontSize || 20}
+              onValueChange={handleSelectedTextSizeChange}
+              minValue={12}
+              maxValue={72}
+            />
 
-        {/* Color Picker */}
-        <View style={styles.colorPickerContainer}>
-          <ColorPicker
-            selectedColor={currentColor}
-            onColorSelect={setCurrentColor}
-            onAddPress={handleAddColor}
-            onDeleteColor={removeCustomColor}
-            customColors={customColors}
-          />
-        </View>
+            {/* Color Picker for text */}
+            <View style={styles.colorPickerContainer}>
+              <ColorPicker
+                selectedColor={selectedTextStroke.color}
+                onColorSelect={handleSelectedTextColorChange}
+                onAddPress={handleAddColor}
+                onDeleteColor={removeCustomColor}
+                customColors={customColors}
+              />
+            </View>
 
-        {/* Tool Bar */}
-        <ToolBar
-          selectedTool={selectedTool}
-          onToolSelect={handleToolSelect}
-          onUndo={undoLastStroke}
-          onDone={handleDone}
-          canUndo={strokes.length > 0}
-          doneLabel={isPaired ? 'Send' : 'Save'}
-        />
+            {/* Text Toolbar - matches ToolBar height */}
+            <View style={styles.textToolbar}>
+              <View style={styles.textToolsRow}>
+                <TouchableOpacity
+                  style={styles.textToolButton}
+                  onPress={() => {
+                    if (selectedTextStroke) {
+                      handleTextEdit(selectedTextStroke);
+                    }
+                  }}
+                >
+                  <View style={styles.textToolIconContainer}>
+                    <MaterialIcons name="edit" size={22} color={colors.textPrimary} />
+                  </View>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.textToolButton}
+                  onPress={handleDeleteSelectedText}
+                >
+                  <View style={[styles.textToolIconContainer, styles.textDeleteIcon]}>
+                    <MaterialIcons name="delete" size={22} color="#ff6b6b" />
+                  </View>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.textToolButton}
+                  onPress={() => setSelectedTextId(null)}
+                >
+                  <View style={styles.textToolIconContainer}>
+                    <MaterialIcons name="close" size={22} color={colors.textSecondary} />
+                  </View>
+                </TouchableOpacity>
+              </View>
+
+              <TouchableOpacity
+                style={styles.textDoneButton}
+                onPress={() => setSelectedTextId(null)}
+              >
+                <Text style={styles.textDoneLabel}>Done</Text>
+              </TouchableOpacity>
+            </View>
+          </>
+        ) : (
+          // Regular drawing mode
+          <>
+            {/* Brush Size Slider */}
+            <BrushSizeSlider
+              value={brushSize}
+              onValueChange={setBrushSize}
+              minValue={1}
+              maxValue={50}
+            />
+
+            {/* Color Picker */}
+            <View style={styles.colorPickerContainer}>
+              <ColorPicker
+                selectedColor={currentColor}
+                onColorSelect={setCurrentColor}
+                onAddPress={handleAddColor}
+                onDeleteColor={removeCustomColor}
+                customColors={customColors}
+              />
+            </View>
+
+            {/* Tool Bar */}
+            <ToolBar
+              selectedTool={selectedTool}
+              onToolSelect={handleToolSelect}
+              onUndo={undoLastStroke}
+              onDone={handleDone}
+              canUndo={strokes.length > 0}
+              doneLabel={isPaired ? 'Send' : 'Save'}
+            />
+          </>
+        )}
       </View>
     </GestureHandlerRootView>
   );
@@ -875,6 +1145,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.md,
     gap: spacing.sm,
+    minHeight: 200, // Fixed height to prevent layout shift when toolbar changes
   },
   colorPickerContainer: {
     paddingVertical: spacing.xs,
@@ -1044,5 +1315,116 @@ const styles = StyleSheet.create({
   },
   disabledButton: {
     opacity: 0.5,
+  },
+  // Text Edit Modal styles
+  textEditModalContent: {
+    width: '90%',
+    maxWidth: 360,
+  },
+  editSectionLabel: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    marginBottom: spacing.sm,
+    marginTop: spacing.sm,
+  },
+  editColorRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  editColorOption: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  editColorSelected: {
+    borderColor: colors.white,
+    borderWidth: 3,
+  },
+  editSizeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.lg,
+    marginBottom: spacing.lg,
+  },
+  editSizeButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.cardDarker,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  editSizePreview: {
+    width: 60,
+    height: 50,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  editSizePreviewText: {
+    color: colors.textPrimary,
+    fontWeight: 'bold',
+  },
+  editButtonRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  editDeleteButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    paddingVertical: spacing.md,
+    marginBottom: spacing.md,
+    borderWidth: 1,
+    borderColor: '#ff6b6b',
+    borderRadius: borderRadius.default,
+  },
+  editDeleteText: {
+    color: '#ff6b6b',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  // Text formatting toolbar styles - matches ToolBar component
+  textToolbar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: spacing.xs,
+  },
+  textToolsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  textToolButton: {
+    padding: spacing.xs,
+  },
+  textToolIconContainer: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.cardDark,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  textDeleteIcon: {
+    backgroundColor: 'rgba(255, 107, 107, 0.15)',
+  },
+  textDoneButton: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.md,
+    borderRadius: borderRadius.full,
+    height: 44,
+    justifyContent: 'center',
+  },
+  textDoneLabel: {
+    ...typography.buttonText,
+    color: colors.white,
   },
 });
