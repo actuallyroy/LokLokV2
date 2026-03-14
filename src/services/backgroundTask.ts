@@ -1,7 +1,8 @@
 import * as TaskManager from 'expo-task-manager';
 import * as Notifications from 'expo-notifications';
 import * as FileSystem from 'expo-file-system';
-import { getLatestDrawing, DrawingData } from './strokeSync';
+import { getLatestDrawing, DrawingData, markDrawingAsSeen, getPartnerFcmToken } from './strokeSync';
+import { sendSeenNotification } from './notifications';
 import { getWallpaper, setLockscreenWallpaper, compositeAndSetLockscreen } from '../../modules/wallpaper';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -132,6 +133,16 @@ export async function applyReceivedDrawing(pairingId: string, forceApply: boolea
       await AsyncStorage.setItem(STORAGE_KEYS.LAST_APPLIED_DRAWING_TIME, drawingTime.toString());
 
       console.log(`[${Date.now()}] Drawing applied to lockscreen successfully via native compositing`);
+
+      // Mark drawing as seen and notify sender (only if it's from partner - we checked senderId above)
+      if (myDeviceId) {
+        await markDrawingAsSeen(pairingId, myDeviceId);
+        const senderToken = await getPartnerFcmToken(pairingId, myDeviceId);
+        if (senderToken) {
+          await sendSeenNotification(senderToken, 'Your partner');
+        }
+      }
+
       return true;
     }
 

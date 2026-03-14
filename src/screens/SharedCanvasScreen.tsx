@@ -34,8 +34,8 @@ import {
 import { colors, typography, spacing, borderRadius } from '../theme';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { useCanvasStore, usePairingStore, useSettingsStore } from '../store';
-import { sendDrawingToPartner, getPartnerFcmToken, subscribeToDrawings } from '../services/strokeSync';
-import { sendPushToPartner } from '../services/notifications';
+import { sendDrawingToPartner, getPartnerFcmToken, subscribeToDrawings, markDrawingAsSeen } from '../services/strokeSync';
+import { sendPushToPartner, sendSeenNotification } from '../services/notifications';
 import { saveBackgroundImageUri, getBackgroundImageUri, getDeviceId, applyReceivedDrawing } from '../services/backgroundTask';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -118,6 +118,11 @@ export const SharedCanvasScreen: React.FC<SharedCanvasScreenProps> = ({
   const canvasRef = useRef<View>(null);
   const [canvasDimensions, setCanvasDimensions] = useState({ width: SCREEN_WIDTH, height: SCREEN_HEIGHT });
 
+  // Seen status state
+  const [drawingSeenAt, setDrawingSeenAt] = useState<string | null>(null);
+  const [isSeenByPartner, setIsSeenByPartner] = useState(false);
+  const lastNotifiedSeenAt = useRef<string | null>(null);
+
   // Confirmation modal state
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [dontShowAgain, setDontShowAgain] = useState(false);
@@ -151,6 +156,23 @@ export const SharedCanvasScreen: React.FC<SharedCanvasScreenProps> = ({
     setTimeout(() => {
       setShowToast(false);
     }, 2000);
+  }, []);
+
+  // Format seen timestamp for display
+  const formatSeenTime = useCallback((seenAt: string | null): string => {
+    if (!seenAt) return '';
+    const seenTime = new Date(seenAt);
+    const now = new Date();
+    const diffMs = now.getTime() - seenTime.getTime();
+    const diffSecs = Math.floor(diffMs / 1000);
+    const diffMins = Math.floor(diffSecs / 60);
+    const diffHours = Math.floor(diffMins / 60);
+
+    if (diffSecs < 10) return 'just now';
+    if (diffSecs < 60) return `${diffSecs}s ago`;
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    return seenTime.toLocaleDateString();
   }, []);
 
   // Use device screen aspect ratio (how lockscreen actually appears)
@@ -226,10 +248,27 @@ export const SharedCanvasScreen: React.FC<SharedCanvasScreenProps> = ({
         try {
           console.log(`[${callbackTime}] SharedCanvasScreen callback START - senderId: ${drawing.senderId}, myDeviceId: ${myDeviceId}`);
 
+          // Check if this is OUR drawing that the partner marked as seen
+          if (drawing.senderId === myDeviceId && drawing.seenAt) {
+            const seenTime = drawing.seenAt.toMillis?.() || 0;
+            const seenAtISO = new Date(seenTime).toISOString();
+            // Only update if this is a new seen time (prevent duplicate processing)
+            if (lastNotifiedSeenAt.current !== seenAtISO) {
+              setDrawingSeenAt(seenAtISO);
+              setIsSeenByPartner(true);
+              lastNotifiedSeenAt.current = seenAtISO;
+              console.log(`[${Date.now()}] Our drawing was seen by partner at ${seenTime}`);
+            }
+          }
+
           // Only load if it's from partner, not from me
           if (drawing.senderId !== myDeviceId && drawing.strokes.length > 0) {
             console.log(`[${Date.now()}] Received drawing from partner: ${drawing.strokes.length} strokes`);
-            mergeStrokes(drawing.strokes);
+
+            // If no draft, show partner's drawing on canvas. If we have a draft, preserve it (it takes priority)
+            if (!isDraft) {
+              mergeStrokes(drawing.strokes);
+            }
 
             // Auto-apply if setting is enabled
             if (autoApplyDrawings) {
@@ -237,10 +276,11 @@ export const SharedCanvasScreen: React.FC<SharedCanvasScreenProps> = ({
               // Use native compositing to apply drawing to lockscreen (force apply since this is a real-time update)
               const success = await applyReceivedDrawing(pairingId, true);
               console.log(`[${Date.now()}] applyReceivedDrawing returned: ${success}`);
-              // Silent apply - no popup
+              // Seen notification is sent in applyReceivedDrawing
             } else {
               // Just apply without popup when auto-apply is disabled
               await applyReceivedDrawing(pairingId, true);
+              // Seen notification is sent in applyReceivedDrawing
             }
           } else {
             console.log(`[${Date.now()}] Skipping drawing - either own drawing (${drawing.senderId === myDeviceId}) or no strokes (${drawing.strokes.length})`);
@@ -543,6 +583,10 @@ export const SharedCanvasScreen: React.FC<SharedCanvasScreenProps> = ({
       }
 
       markAsSent();
+      // Reset seen status for new drawing
+      setDrawingSeenAt(null);
+      setIsSeenByPartner(false);
+      lastNotifiedSeenAt.current = null;
       showToastNotification(`Sent to ${partnerName || 'your partner'}!`);
     } catch (error) {
       console.error('Error sending to partner:', error);
@@ -970,6 +1014,14 @@ export const SharedCanvasScreen: React.FC<SharedCanvasScreenProps> = ({
         )}
       </View>
 
+      {/* Seen Status Indicator */}
+      {isPaired && isSeenByPartner && drawingSeenAt && (
+        <View style={styles.seenStatusContainer}>
+          <MaterialIcons name="check" size={16} color={colors.success} />
+          <Text style={styles.seenStatusText}>Seen {formatSeenTime(drawingSeenAt)}</Text>
+        </View>
+      )}
+
       {/* Bottom Glass Panel */}
       <View style={[styles.bottomPanel, { paddingBottom: insets.bottom + spacing.sm }]}>
         {selectedTextStroke ? (
@@ -1175,6 +1227,21 @@ const styles = StyleSheet.create({
     paddingTop: spacing.md,
     gap: spacing.sm,
     minHeight: 200, // Fixed height to prevent layout shift when toolbar changes
+  },
+  seenStatusContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    paddingVertical: spacing.xs,
+    backgroundColor: 'rgba(76, 175, 80, 0.1)',
+    borderRadius: borderRadius.default,
+    paddingHorizontal: spacing.md,
+  },
+  seenStatusText: {
+    ...typography.caption,
+    color: colors.success,
+    fontWeight: '500',
   },
   colorPickerContainer: {
     paddingVertical: spacing.xs,

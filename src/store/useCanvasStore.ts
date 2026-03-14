@@ -13,6 +13,11 @@ interface CanvasState {
   customColors: string[];
   isDraft: boolean;
 
+  // Seen status
+  lastSentAt: string | null;
+  isSeenByPartner: boolean;
+  seenAt: string | null;
+
   // Actions
   setStrokes: (strokes: Stroke[]) => void;
   addStroke: (stroke: Stroke) => void;
@@ -25,6 +30,8 @@ interface CanvasState {
   setSelectedTool: (tool: Tool) => void;
   addCustomColor: (color: string) => void;
   removeCustomColor: (color: string) => void;
+  setLastSentAt: (timestamp: string | null) => void;
+  setSeenStatus: (seenAt: string | null) => void;
 }
 
 export const useCanvasStore = create<CanvasState>()(
@@ -37,6 +44,9 @@ export const useCanvasStore = create<CanvasState>()(
       selectedTool: 'brush',
       customColors: [],
       isDraft: false,
+      lastSentAt: null,
+      isSeenByPartner: false,
+      seenAt: null,
 
       // Actions
       setStrokes: (strokes) => set({ strokes, isDraft: true }),
@@ -59,7 +69,13 @@ export const useCanvasStore = create<CanvasState>()(
 
       clearCanvas: () => set({ strokes: [], isDraft: false }),
 
-      markAsSent: () => set({ isDraft: false }),
+      markAsSent: () =>
+        set({
+          isDraft: false,
+          lastSentAt: new Date().toISOString(),
+          isSeenByPartner: false,
+          seenAt: null,
+        }),
 
       setCurrentColor: (color) => set({ currentColor: color }),
 
@@ -79,6 +95,14 @@ export const useCanvasStore = create<CanvasState>()(
         set((state) => ({
           customColors: state.customColors.filter((c) => c !== color),
         })),
+
+      setLastSentAt: (timestamp) => set({ lastSentAt: timestamp }),
+
+      setSeenStatus: (seenAt) =>
+        set({
+          seenAt,
+          isSeenByPartner: !!seenAt,
+        }),
     }),
     {
       name: 'loklok-canvas-storage',

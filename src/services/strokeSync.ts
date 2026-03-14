@@ -22,6 +22,8 @@ export interface DrawingData {
   canvasHeight: number;
   encrypted?: boolean;
   encryptedData?: string;
+  seenAt?: Timestamp | null;
+  seenBy?: string;
 }
 
 export interface PairingData {
@@ -136,6 +138,8 @@ export async function getLatestDrawing(pairingId: string): Promise<DrawingData |
               canvasWidth: rawData.canvasWidth,
               canvasHeight: rawData.canvasHeight,
               encrypted: true,
+              seenAt: rawData.seenAt || null,
+              seenBy: rawData.seenBy,
             };
           } else {
             console.error('Failed to decrypt drawing - no shared secret');
@@ -147,7 +151,11 @@ export async function getLatestDrawing(pairingId: string): Promise<DrawingData |
         }
       }
 
-      return rawData as DrawingData;
+      return {
+        ...rawData,
+        seenAt: rawData.seenAt || null,
+        seenBy: rawData.seenBy,
+      } as DrawingData;
     }
     return null;
   } catch (error) {
@@ -196,6 +204,8 @@ export function subscribeToDrawings(
                 canvasWidth: rawData.canvasWidth,
                 canvasHeight: rawData.canvasHeight,
                 encrypted: true,
+                seenAt: rawData.seenAt || null,
+                seenBy: rawData.seenBy,
               };
               console.log(`[${Date.now()}] Decrypted ${strokes.length} strokes successfully`);
             } else {
@@ -208,7 +218,11 @@ export function subscribeToDrawings(
           }
         } else {
           // Unencrypted data (backwards compatibility)
-          drawing = rawData as DrawingData;
+          drawing = {
+            ...rawData,
+            seenAt: rawData.seenAt || null,
+            seenBy: rawData.seenBy,
+          } as DrawingData;
           console.log(`[${Date.now()}] Using unencrypted drawing: ${drawing.strokes?.length} strokes`);
         }
 
@@ -279,6 +293,27 @@ export async function getPartnerFcmToken(pairingId: string, myDeviceId: string):
   } catch (error) {
     console.error('Error getting partner FCM token:', error);
     return null;
+  }
+}
+
+/**
+ * Mark a drawing as seen by updating the Firestore document
+ */
+export async function markDrawingAsSeen(pairingId: string, myDeviceId: string): Promise<boolean> {
+  try {
+    const db = getFirestoreDb();
+    const drawingRef = doc(db, 'drawings', pairingId);
+
+    await updateDoc(drawingRef, {
+      seenAt: serverTimestamp(),
+      seenBy: myDeviceId,
+    });
+
+    console.log('Drawing marked as seen');
+    return true;
+  } catch (error) {
+    console.error('Error marking drawing as seen:', error);
+    return false;
   }
 }
 

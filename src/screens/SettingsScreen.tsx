@@ -149,7 +149,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   }, []);
 
   const handleSupport = useCallback(() => {
-    Linking.openURL('mailto:support@loklok.app?subject=LokLok Support Request');
+    Linking.openURL('https://loklok.actuallyroy.com/help');
   }, []);
 
   return (
@@ -287,7 +287,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
               title="Privacy Policy"
               subtitle="How we handle your data"
               showChevron
-              onPress={() => Linking.openURL('https://loklok.app/privacy')}
+              onPress={() => Linking.openURL('https://loklok.actuallyroy.com/privacy')}
             />
             <SettingsItem
               icon="help-outline"

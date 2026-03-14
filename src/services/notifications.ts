@@ -125,6 +125,50 @@ export async function sendPushToPartner(
 }
 
 /**
+ * Send a "drawing seen" notification to the sender
+ */
+export async function sendSeenNotification(
+  partnerToken: string,
+  senderName: string
+): Promise<boolean> {
+  try {
+    const message = {
+      to: partnerToken,
+      sound: 'default',
+      title: 'Drawing Seen',
+      body: `${senderName} saw your drawing`,
+      data: {
+        type: 'drawing_seen',
+      },
+      priority: 'high',
+      channelId: 'drawing-updates',
+      _contentAvailable: true,
+      android: {
+        priority: 'high',
+        channelId: 'drawing-updates',
+      },
+    };
+
+    const response = await fetch('https://exp.host/--/api/v2/push/send', {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Accept-encoding': 'gzip, deflate',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(message),
+    });
+
+    const result = await response.json();
+    console.log('Seen notification sent:', result);
+    return true;
+  } catch (error) {
+    console.error('Error sending seen notification:', error);
+    return false;
+  }
+}
+
+/**
  * Add listener for received notifications
  */
 export function addNotificationReceivedListener(

@@ -145,6 +145,9 @@ export default function App() {
           await applyReceivedDrawing(data.pairingId, true);
           // Silent apply - no popup
         }
+      } else if (data?.type === 'drawing_seen') {
+        // Handle drawing seen notification - the UI will update via Firestore subscription
+        console.log('Drawing was seen by partner');
       }
     });
 
@@ -156,6 +159,9 @@ export default function App() {
         // Apply the drawing when user taps notification
         await applyReceivedDrawing(data.pairingId, true);
         // Silent apply - no popup
+      } else if (data?.type === 'drawing_seen') {
+        // Notification about drawing being seen - just acknowledge
+        console.log('User tapped drawing seen notification');
       }
     });
 
