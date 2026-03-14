@@ -64,11 +64,11 @@ jobs:
       - name: Install dependencies
         run: yarn install
 
+      - name: Create google-services.json
+        run: echo '${{ secrets.GOOGLE_SERVICES_JSON }}' > google-services.json
+
       - name: Generate native Android project
         run: npx expo prebuild --platform android --no-install
-
-      - name: Create google-services.json
-        run: echo '${{ secrets.GOOGLE_SERVICES_JSON }}' > android/app/google-services.json
 
       - name: Set up signing keystore
         env:
