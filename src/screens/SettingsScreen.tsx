@@ -217,60 +217,64 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
           </View>
         </View>
 
-        {/* Lockscreen Section */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>LOCKSCREEN</Text>
-          <View style={styles.sectionContent}>
-            <SettingsItem
-              icon="lock"
-              iconColor={colors.primary}
-              iconBackgroundColor="rgba(244, 71, 37, 0.15)"
-              title="Auto-Apply Drawings"
-              subtitle="Automatically set partner's drawings as your lockscreen"
-              rightElement={
-                <Toggle
-                  value={autoApplyDrawings}
-                  onValueChange={handleAutoApplyToggle}
-                />
-              }
-            />
-            <View style={styles.infoBox}>
-              <MaterialIcons name="info-outline" size={16} color={colors.textTertiary} />
-              <Text style={styles.infoText}>
-                When enabled, drawings from your partner will automatically update your lockscreen wallpaper. You can always undo this from the canvas screen.
-              </Text>
+        {/* Lockscreen Section - only show when paired */}
+        {isPaired && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>LOCKSCREEN</Text>
+            <View style={styles.sectionContent}>
+              <SettingsItem
+                icon="lock"
+                iconColor={colors.primary}
+                iconBackgroundColor="rgba(244, 71, 37, 0.15)"
+                title="Auto-Apply Drawings"
+                subtitle="Automatically set partner's drawings as your lockscreen"
+                rightElement={
+                  <Toggle
+                    value={autoApplyDrawings}
+                    onValueChange={handleAutoApplyToggle}
+                  />
+                }
+              />
+              <View style={styles.infoBox}>
+                <MaterialIcons name="info-outline" size={16} color={colors.textTertiary} />
+                <Text style={styles.infoText}>
+                  When enabled, drawings from your partner will automatically update your lockscreen wallpaper. You can always undo this from the canvas screen.
+                </Text>
+              </View>
+              <SettingsItem
+                icon="restore"
+                iconColor="#2196F3"
+                iconBackgroundColor="rgba(33, 150, 243, 0.15)"
+                title="Reset Lockscreen"
+                subtitle="Restore your original lockscreen without drawings"
+                showChevron
+                onPress={handleResetLockscreen}
+              />
             </View>
-            <SettingsItem
-              icon="restore"
-              iconColor="#2196F3"
-              iconBackgroundColor="rgba(33, 150, 243, 0.15)"
-              title="Reset Lockscreen"
-              subtitle="Restore your original lockscreen without drawings"
-              showChevron
-              onPress={handleResetLockscreen}
-            />
           </View>
-        </View>
+        )}
 
-        {/* Notifications Section */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>NOTIFICATIONS</Text>
-          <View style={styles.sectionContent}>
-            <SettingsItem
-              icon="notifications"
-              iconColor="#9C27B0"
-              iconBackgroundColor="rgba(156, 39, 176, 0.15)"
-              title="Drawing Alerts"
-              subtitle="Get notified when your partner sends a drawing"
-              rightElement={
-                <Toggle
-                  value={notificationAlerts}
-                  onValueChange={setNotificationAlerts}
-                />
-              }
-            />
+        {/* Notifications Section - only show when paired */}
+        {isPaired && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>NOTIFICATIONS</Text>
+            <View style={styles.sectionContent}>
+              <SettingsItem
+                icon="notifications"
+                iconColor="#9C27B0"
+                iconBackgroundColor="rgba(156, 39, 176, 0.15)"
+                title="Drawing Alerts"
+                subtitle="Get notified when your partner sends a drawing"
+                rightElement={
+                  <Toggle
+                    value={notificationAlerts}
+                    onValueChange={setNotificationAlerts}
+                  />
+                }
+              />
+            </View>
           </View>
-        </View>
+        )}
 
         {/* About Section */}
         <View style={styles.section}>

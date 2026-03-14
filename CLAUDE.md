@@ -18,3 +18,9 @@ LokLok is a React Native (Expo) app for couples/friends to draw on each other's 
 ## Firebase Project
 - Project ID: `loklokv2-9e1ca`
 - Config in: `src/services/firebase.ts`
+
+## Metro Logs
+When debugging Metro bundler issues, errors, or build problems, read the log file:
+- Log file: `logs/metro.log`
+- The log is cleared on each Metro start
+- Contains all console output (log, error, warn, info, debug) with timestamps

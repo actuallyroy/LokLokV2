@@ -29,6 +29,7 @@ import {
   ToolBar,
   Stroke,
   Tool,
+  DraggableText,
 } from '../components/canvas';
 import { colors, typography, spacing, borderRadius } from '../theme';
 import { RootStackParamList } from '../navigation/AppNavigator';
@@ -85,13 +86,37 @@ export const SharedCanvasScreen: React.FC<SharedCanvasScreenProps> = ({
   navigation,
 }) => {
   const insets = useSafeAreaInsets();
+
+  // Store hooks - must be declared before useEffects that depend on them
+  const {
+    strokes,
+    currentColor,
+    brushSize,
+    selectedTool,
+    customColors,
+    isDraft,
+    setStrokes,
+    setCurrentColor,
+    setBrushSize,
+    setSelectedTool,
+    undoLastStroke,
+    clearCanvas,
+    markAsSent,
+    mergeStrokes,
+    addCustomColor,
+    removeCustomColor,
+  } = useCanvasStore();
+
+  const { isPartnerDrawing, isPaired, pairingId, partnerName, partnerFcmToken } = usePairingStore();
+
+  const { userName, autoApplyDrawings, skipSendConfirmation, setSkipSendConfirmation } = useSettingsStore();
+
+  // Local state
   const [wallpaperUri, setWallpaperUri] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const canvasRef = useRef<View>(null);
   const [canvasDimensions, setCanvasDimensions] = useState({ width: SCREEN_WIDTH, height: SCREEN_HEIGHT });
-
-  const { userName, autoApplyDrawings, skipSendConfirmation, setSkipSendConfirmation } = useSettingsStore();
 
   // Confirmation modal state
   const [showConfirmModal, setShowConfirmModal] = useState(false);
@@ -264,27 +289,6 @@ export const SharedCanvasScreen: React.FC<SharedCanvasScreenProps> = ({
     }
   };
 
-  const {
-    strokes,
-    currentColor,
-    brushSize,
-    selectedTool,
-    customColors,
-    isDraft,
-    setStrokes,
-    setCurrentColor,
-    setBrushSize,
-    setSelectedTool,
-    undoLastStroke,
-    clearCanvas,
-    markAsSent,
-    mergeStrokes,
-    addCustomColor,
-    removeCustomColor,
-  } = useCanvasStore();
-
-  const { isPartnerDrawing, isPaired, pairingId, partnerName, partnerFcmToken } = usePairingStore();
-
   const handleStrokesChange = useCallback(
     (newStrokes: Stroke[]) => {
       setStrokes(newStrokes);
@@ -344,14 +348,41 @@ export const SharedCanvasScreen: React.FC<SharedCanvasScreenProps> = ({
     setPendingTextPosition(null);
   }, [pendingTextPosition, textInputValue, brushSize, currentColor, strokes, setStrokes]);
 
-  // Handler for editing existing text
-  const handleTextEdit = useCallback((stroke: Stroke) => {
-    setEditingTextStroke(stroke);
-    setEditTextValue(stroke.text || '');
-    setEditTextColor(stroke.color);
-    setEditTextSize(stroke.fontSize || 20);
-    setShowTextEditModal(true);
+  // Handlers for DraggableText
+  const handleTextSelect = useCallback((id: string) => {
+    setSelectedTextId(id);
   }, []);
+
+  const handleTextDeselect = useCallback(() => {
+    setSelectedTextId(null);
+  }, []);
+
+  const handleDraggableTextChange = useCallback((id: string, newText: string) => {
+    const updatedStrokes = strokes.map((s) =>
+      s.id === id ? { ...s, text: newText } : s
+    );
+    setStrokes(updatedStrokes);
+  }, [strokes, setStrokes]);
+
+  const handleTextPositionChange = useCallback((id: string, x: number, y: number) => {
+    const updatedStrokes = strokes.map((s) =>
+      s.id === id ? { ...s, x, y } : s
+    );
+    setStrokes(updatedStrokes);
+  }, [strokes, setStrokes]);
+
+  const handleTextTransformChange = useCallback((id: string, rotation: number, scale: number) => {
+    const updatedStrokes = strokes.map((s) =>
+      s.id === id ? { ...s, rotation, scale } : s
+    );
+    setStrokes(updatedStrokes);
+  }, [strokes, setStrokes]);
+
+  const handleTextDeleteFromDraggable = useCallback((id: string) => {
+    const updatedStrokes = strokes.filter((s) => s.id !== id);
+    setStrokes(updatedStrokes);
+    setSelectedTextId(null);
+  }, [strokes, setStrokes]);
 
   const handleTextEditConfirm = useCallback(() => {
     if (!editingTextStroke || !editTextValue.trim()) {
@@ -389,25 +420,12 @@ export const SharedCanvasScreen: React.FC<SharedCanvasScreenProps> = ({
     }
   }, [editingTextStroke, strokes, setStrokes, selectedTextId]);
 
-  // Handler for text selection
-  const handleTextSelect = useCallback((stroke: Stroke | null) => {
-    setSelectedTextId(stroke?.id || null);
-  }, []);
-
-  // Handler for moving text
-  const handleTextMove = useCallback((strokeId: string, x: number, y: number) => {
-    const updatedStrokes = strokes.map((s) =>
-      s.id === strokeId ? { ...s, x, y } : s
-    );
-    setStrokes(updatedStrokes);
-  }, [strokes, setStrokes]);
-
   // Get the selected text stroke for formatting
   const selectedTextStroke = selectedTextId
     ? strokes.find((s) => s.id === selectedTextId && s.type === 'text')
     : null;
 
-  // Handler for changing selected text color
+  // Handler for changing selected text color (from toolbar)
   const handleSelectedTextColorChange = useCallback((color: string) => {
     if (!selectedTextId) return;
     const updatedStrokes = strokes.map((s) =>
@@ -417,7 +435,7 @@ export const SharedCanvasScreen: React.FC<SharedCanvasScreenProps> = ({
     setCurrentColor(color);
   }, [selectedTextId, strokes, setStrokes, setCurrentColor]);
 
-  // Handler for changing selected text size
+  // Handler for changing selected text size (from toolbar)
   const handleSelectedTextSizeChange = useCallback((size: number) => {
     if (!selectedTextId) return;
     const updatedStrokes = strokes.map((s) =>
@@ -426,14 +444,6 @@ export const SharedCanvasScreen: React.FC<SharedCanvasScreenProps> = ({
     setStrokes(updatedStrokes);
     setBrushSize(size);
   }, [selectedTextId, strokes, setStrokes, setBrushSize]);
-
-  // Handler for deleting selected text
-  const handleDeleteSelectedText = useCallback(() => {
-    if (!selectedTextId) return;
-    const updatedStrokes = strokes.filter((s) => s.id !== selectedTextId);
-    setStrokes(updatedStrokes);
-    setSelectedTextId(null);
-  }, [selectedTextId, strokes, setStrokes]);
 
   const handleConfirmAction = useCallback(() => {
     if (dontShowAgain) {
@@ -878,22 +888,54 @@ export const SharedCanvasScreen: React.FC<SharedCanvasScreenProps> = ({
               </TouchableOpacity>
             )}
 
-            {/* Drawing Canvas - only active when wallpaper is selected */}
+            {/* Drawing Canvas - only renders brush strokes */}
             {wallpaperUri && (
               <View style={styles.drawingLayer}>
                 <DrawingCanvas
-                  strokes={strokes}
-                  onStrokesChange={handleStrokesChange}
+                  strokes={strokes.filter(s => s.type !== 'text')}
+                  onStrokesChange={(newStrokes) => {
+                    // Merge brush strokes with existing text strokes
+                    const textStrokes = strokes.filter(s => s.type === 'text');
+                    handleStrokesChange([...textStrokes, ...newStrokes]);
+                  }}
                   currentColor={currentColor}
                   brushSize={brushSize}
                   isEraser={selectedTool === 'eraser'}
                   isTextTool={selectedTool === 'text'}
                   onTextTap={handleTextTap}
-                  onTextEdit={handleTextEdit}
-                  selectedTextId={selectedTextId}
-                  onTextSelect={handleTextSelect}
-                  onTextMove={handleTextMove}
                 />
+
+                {/* Draggable Text Elements */}
+                {strokes
+                  .filter((s) => s.type === 'text')
+                  .map((textStroke) => (
+                    <DraggableText
+                      key={textStroke.id}
+                      id={textStroke.id}
+                      initialText={textStroke.text || ''}
+                      initialX={textStroke.x || 0}
+                      initialY={textStroke.y || 0}
+                      initialFontSize={textStroke.fontSize || 20}
+                      initialColor={textStroke.color}
+                      initialRotation={textStroke.rotation || 0}
+                      initialScale={textStroke.scale || 1}
+                      isSelected={selectedTextId === textStroke.id}
+                      onSelect={handleTextSelect}
+                      onDeselect={handleTextDeselect}
+                      onTextChange={handleDraggableTextChange}
+                      onPositionChange={handleTextPositionChange}
+                      onTransformChange={handleTextTransformChange}
+                      onDelete={handleTextDeleteFromDraggable}
+                      onFontSizeChange={(id, size) => {
+                        const updated = strokes.map(s => s.id === id ? { ...s, fontSize: size } : s);
+                        setStrokes(updated);
+                      }}
+                      onColorChange={(id, color) => {
+                        const updated = strokes.map(s => s.id === id ? { ...s, color } : s);
+                        setStrokes(updated);
+                      }}
+                    />
+                  ))}
               </View>
             )}
           </View>
@@ -957,20 +999,7 @@ export const SharedCanvasScreen: React.FC<SharedCanvasScreenProps> = ({
               <View style={styles.textToolsRow}>
                 <TouchableOpacity
                   style={styles.textToolButton}
-                  onPress={() => {
-                    if (selectedTextStroke) {
-                      handleTextEdit(selectedTextStroke);
-                    }
-                  }}
-                >
-                  <View style={styles.textToolIconContainer}>
-                    <MaterialIcons name="edit" size={22} color={colors.textPrimary} />
-                  </View>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={styles.textToolButton}
-                  onPress={handleDeleteSelectedText}
+                  onPress={() => handleTextDeleteFromDraggable(selectedTextId!)}
                 >
                   <View style={[styles.textToolIconContainer, styles.textDeleteIcon]}>
                     <MaterialIcons name="delete" size={22} color="#ff6b6b" />
