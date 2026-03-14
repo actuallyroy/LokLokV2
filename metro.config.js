@@ -21,68 +21,33 @@ function stripAnsi(text) {
   return text.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '');
 }
 
-// Create a function that writes immediately to file
-function writeToLog(level, args) {
+// Intercept process.stdout and process.stderr to capture ALL output,
+// including device logs that Expo CLI writes directly to stdout
+const originalStdoutWrite = process.stdout.write.bind(process.stdout);
+const originalStderrWrite = process.stderr.write.bind(process.stderr);
+
+function appendToLog(chunk) {
+  const text = stripAnsi(typeof chunk === 'string' ? chunk : chunk.toString('utf8'));
+  if (!text.trim()) return;
   const timestamp = new Date().toISOString();
-  const formattedArgs = args.map(arg => {
-    if (typeof arg === 'object') {
-      return util.inspect(arg, { depth: null, colors: false });
-    }
-    return stripAnsi(String(arg));
-  }).join(' ');
-
-  // Skip empty lines after stripping ANSI codes
-  if (!formattedArgs.trim()) {
-    return;
-  }
-
-  const message = `[${timestamp}] [${level}] ${formattedArgs}\n`;
-
-  // Use appendFileSync for immediate write
   try {
-    fs.appendFileSync(logFile, message, 'utf8');
+    fs.appendFileSync(logFile, `[${timestamp}] ${text}${text.endsWith('\n') ? '' : '\n'}`, 'utf8');
   } catch (error) {
-    // If we can't write to the log file, at least show it in console
+    // ignore write errors
   }
 }
 
-// Store original console methods
-const originalConsole = {
-  log: console.log.bind(console),
-  error: console.error.bind(console),
-  warn: console.warn.bind(console),
-  info: console.info.bind(console),
-  debug: console.debug.bind(console)
+process.stdout.write = function(chunk, encoding, callback) {
+  appendToLog(chunk);
+  return originalStdoutWrite(chunk, encoding, callback);
 };
 
-// Override console methods
-console.log = function(...args) {
-  writeToLog('LOG', args);
-  originalConsole.log(...args);
+process.stderr.write = function(chunk, encoding, callback) {
+  appendToLog(chunk);
+  return originalStderrWrite(chunk, encoding, callback);
 };
 
-console.error = function(...args) {
-  writeToLog('ERROR', args);
-  originalConsole.error(...args);
-};
-
-console.warn = function(...args) {
-  writeToLog('WARN', args);
-  originalConsole.warn(...args);
-};
-
-console.info = function(...args) {
-  writeToLog('INFO', args);
-  originalConsole.info(...args);
-};
-
-console.debug = function(...args) {
-  writeToLog('DEBUG', args);
-  originalConsole.debug(...args);
-};
-
-// Log startup
-console.log('Metro bundler started - logging to', logFile);
+originalStdoutWrite('Metro bundler started - logging to ' + logFile + '\n');
 
 /**
  * Metro configuration

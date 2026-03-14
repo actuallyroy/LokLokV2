@@ -134,8 +134,8 @@ export async function applyReceivedDrawing(pairingId: string, forceApply: boolea
 
       console.log(`[${Date.now()}] Drawing applied to lockscreen successfully via native compositing`);
 
-      // Mark drawing as seen and notify sender (only if it's from partner - we checked senderId above)
-      if (myDeviceId) {
+      // Mark drawing as seen and notify sender (only if not already seen)
+      if (myDeviceId && !drawingData.seenAt) {
         await markDrawingAsSeen(pairingId, myDeviceId);
         const senderToken = await getPartnerFcmToken(pairingId, myDeviceId);
         if (senderToken) {

@@ -264,22 +264,19 @@ export const SharedCanvasScreen: React.FC<SharedCanvasScreenProps> = ({
           // Only load if it's from partner, not from me
           if (drawing.senderId !== myDeviceId && drawing.strokes.length > 0) {
             console.log(`[${Date.now()}] Received drawing from partner: ${drawing.strokes.length} strokes`);
-
-            // If no draft, show partner's drawing on canvas. If we have a draft, preserve it (it takes priority)
-            if (!isDraft) {
-              mergeStrokes(drawing.strokes);
-            }
+            // Note: Don't merge to canvas - just apply to lockscreen
+            // Canvas is for user's local drawing, lockscreen is the shared drawing
 
             // Auto-apply if setting is enabled
             if (autoApplyDrawings) {
               console.log(`[${Date.now()}] autoApplyDrawings=true, calling applyReceivedDrawing...`);
-              // Use native compositing to apply drawing to lockscreen (force apply since this is a real-time update)
-              const success = await applyReceivedDrawing(pairingId, true);
+              // Don't force apply - let timestamp check prevent re-applying same drawing
+              const success = await applyReceivedDrawing(pairingId, false);
               console.log(`[${Date.now()}] applyReceivedDrawing returned: ${success}`);
               // Seen notification is sent in applyReceivedDrawing
             } else {
               // Just apply without popup when auto-apply is disabled
-              await applyReceivedDrawing(pairingId, true);
+              await applyReceivedDrawing(pairingId, false);
               // Seen notification is sent in applyReceivedDrawing
             }
           } else {
