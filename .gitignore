@@ -65,3 +65,5 @@ yarn.lock
 nul
 build/
 .gradle
+.claude/.fuse_hidden0007242300000003
+.claude/settings.local.json
