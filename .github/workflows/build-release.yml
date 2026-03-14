@@ -70,13 +70,8 @@ jobs:
       - name: Generate native Android project
         run: npx expo prebuild --platform android --no-install
 
-      - name: Debug - Check android directory contents
-        run: |
-          echo "=== Android directory structure ==="
-          ls -la android/ || echo "android/ not found"
-          echo "=== Gradlew info ==="
-          file android/gradlew || echo "android/gradlew not found"
-          head -5 android/gradlew || echo "Cannot read android/gradlew"
+      - name: Convert gradlew line endings to LF
+        run: dos2unix android/gradlew || sed -i 's/\r$//' android/gradlew
 
       - name: Set up signing keystore
         env:
