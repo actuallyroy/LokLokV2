@@ -3,3 +3,4 @@ export { BrushSizeSlider } from './BrushSizeSlider';
 export { ToolBar, type Tool } from './ToolBar';
 export { DrawingCanvas, type Stroke } from './DrawingCanvas';
 export { DraggableText, type DraggableTextProps } from './DraggableText';
+export { ReadOnlyCanvas } from './ReadOnlyCanvas';

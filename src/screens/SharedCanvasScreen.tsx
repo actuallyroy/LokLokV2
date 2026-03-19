@@ -13,11 +13,14 @@ import {
   Pressable,
   ScrollView,
   TextInput,
+  NativeScrollEvent,
+  NativeSyntheticEvent,
+  PanResponder,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { getWallpaper, setLockscreenWallpaper, startSyncService, stopSyncService } from '../../modules/wallpaper';
-import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { GestureHandlerRootView, GestureDetector, Gesture } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { captureRef } from 'react-native-view-shot';
@@ -30,6 +33,7 @@ import {
   Stroke,
   Tool,
   DraggableText,
+  ReadOnlyCanvas,
 } from '../components/canvas';
 import { colors, typography, spacing, borderRadius } from '../theme';
 import { RootStackParamList } from '../navigation/AppNavigator';
@@ -90,12 +94,14 @@ export const SharedCanvasScreen: React.FC<SharedCanvasScreenProps> = ({
   // Store hooks - must be declared before useEffects that depend on them
   const {
     strokes,
+    partnerStrokes,
     currentColor,
     brushSize,
     selectedTool,
     customColors,
     isDraft,
     setStrokes,
+    setPartnerStrokes,
     setCurrentColor,
     setBrushSize,
     setSelectedTool,
@@ -115,7 +121,9 @@ export const SharedCanvasScreen: React.FC<SharedCanvasScreenProps> = ({
   const [wallpaperUri, setWallpaperUri] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isSending, setIsSending] = useState(false);
+  const [currentPage, setCurrentPage] = useState(0);
   const canvasRef = useRef<View>(null);
+  const scrollViewRef = useRef<ScrollView>(null);
   const [canvasDimensions, setCanvasDimensions] = useState({ width: SCREEN_WIDTH, height: SCREEN_HEIGHT });
 
   // Seen status state
@@ -157,6 +165,38 @@ export const SharedCanvasScreen: React.FC<SharedCanvasScreenProps> = ({
       setShowToast(false);
     }, 2000);
   }, []);
+
+  const goToPage = useCallback((pageIndex: number) => {
+    scrollViewRef.current?.scrollTo({
+      x: pageIndex * SCREEN_WIDTH,
+      animated: true,
+    });
+    setCurrentPage(pageIndex);
+  }, []);
+
+  const handleClearAll = useCallback(() => {
+    Alert.alert(
+      'Clear All Drawings',
+      'Are you sure you want to clear both your drawing and partner\'s drawing?',
+      [
+        { text: 'Cancel', onPress: () => {} },
+        {
+          text: 'Clear',
+          onPress: () => {
+            clearCanvas();
+            setPartnerStrokes([]);
+          },
+          style: 'destructive',
+        },
+      ]
+    );
+  }, [clearCanvas, setPartnerStrokes]);
+
+  // Gesture for horizontal scrolling - only on partner canvas page
+  const horizontalPan = Gesture.Pan()
+    .activeOffsetX([-10, 10])
+    .activeOffsetY([-1000, 1000])
+    .simultaneousWithExternalGesture();
 
   // Format seen timestamp for display
   const formatSeenTime = useCallback((seenAt: string | null): string => {
@@ -264,8 +304,8 @@ export const SharedCanvasScreen: React.FC<SharedCanvasScreenProps> = ({
           // Only load if it's from partner, not from me
           if (drawing.senderId !== myDeviceId && drawing.strokes.length > 0) {
             console.log(`[${Date.now()}] Received drawing from partner: ${drawing.strokes.length} strokes`);
-            // Note: Don't merge to canvas - just apply to lockscreen
-            // Canvas is for user's local drawing, lockscreen is the shared drawing
+            // Store partner strokes in canvas for side-by-side display
+            setPartnerStrokes(drawing.strokes);
 
             // Auto-apply if setting is enabled
             if (autoApplyDrawings) {
@@ -303,7 +343,7 @@ export const SharedCanvasScreen: React.FC<SharedCanvasScreenProps> = ({
         console.log(`[${Date.now()}] Sync service stopped on cleanup`);
       });
     };
-  }, [isPaired, pairingId, mergeStrokes, autoApplyDrawings]);
+  }, [isPaired, pairingId, mergeStrokes, autoApplyDrawings, setPartnerStrokes]);
 
   // Pick wallpaper from gallery
   const pickWallpaperFromGallery = async () => {
@@ -894,121 +934,208 @@ export const SharedCanvasScreen: React.FC<SharedCanvasScreenProps> = ({
 
       {/* Canvas Area */}
       <View style={styles.canvasWrapper}>
-        {/* Canvas position wrapper - for button positioning */}
-        <View style={styles.canvasPositioner}>
-          <View
-            ref={canvasRef}
-            style={[
-              styles.canvasContainer,
-              {
-                aspectRatio: screenAspectRatio,
-                flex: undefined,
-                maxHeight: '100%',
-              },
-            ]}
-            collapsable={false}
-            onLayout={(e) => {
-              const { width, height } = e.nativeEvent.layout;
-              setCanvasDimensions({ width, height });
+        {/* Left Arrow Button */}
+        {currentPage === 1 && (
+          <TouchableOpacity
+            style={styles.sideNavButton}
+            onPress={() => goToPage(0)}
+          >
+            <MaterialIcons name="chevron-left" size={28} color={colors.white} />
+          </TouchableOpacity>
+        )}
+
+        {/* Right Arrow Button */}
+        {currentPage === 0 && partnerStrokes.length > 0 && (
+          <TouchableOpacity
+            style={[styles.sideNavButton, styles.sideNavButtonRight]}
+            onPress={() => goToPage(1)}
+          >
+            <MaterialIcons name="chevron-right" size={28} color={colors.white} />
+          </TouchableOpacity>
+        )}
+
+        {/* Swipeable Canvas Scroll View */}
+        <GestureDetector gesture={horizontalPan}>
+          <ScrollView
+            ref={scrollViewRef}
+            horizontal
+            pagingEnabled
+            scrollEnabled={true}
+            showsHorizontalScrollIndicator={false}
+            style={styles.canvasScroll}
+            scrollEventThrottle={16}
+            decelerationRate={0.95}
+            onMomentumScrollEnd={(event) => {
+              const pageIndex = Math.round(event.nativeEvent.contentOffset.x / SCREEN_WIDTH);
+              setCurrentPage(pageIndex);
             }}
           >
-            {/* Wallpaper Background */}
-            {wallpaperUri ? (
-              <Image
-                source={{ uri: wallpaperUri }}
-                style={styles.wallpaperBackground}
-                resizeMode="cover"
-              />
-            ) : (
-              <TouchableOpacity
-                style={styles.selectBackgroundButton}
-                onPress={pickWallpaperFromGallery}
+          {/* Page 1: User's Drawing (Interactive) */}
+          <View style={styles.canvasPage}>
+            <View style={styles.canvasPositioner}>
+              <View
+                ref={canvasRef}
+                style={[
+                  styles.canvasContainer,
+                  {
+                    aspectRatio: screenAspectRatio,
+                    flex: undefined,
+                    maxHeight: '100%',
+                  },
+                ]}
+                collapsable={false}
+                onLayout={(e) => {
+                  const { width, height } = e.nativeEvent.layout;
+                  setCanvasDimensions({ width, height });
+                }}
               >
-                <MaterialIcons name="add-photo-alternate" size={48} color={colors.textSecondary} />
-                <Text style={styles.selectBackgroundText}>Tap to select your lockscreen image</Text>
-              </TouchableOpacity>
-            )}
+                {/* Wallpaper Background */}
+                {wallpaperUri ? (
+                  <Image
+                    source={{ uri: wallpaperUri }}
+                    style={styles.wallpaperBackground}
+                    resizeMode="cover"
+                  />
+                ) : (
+                  <TouchableOpacity
+                    style={styles.selectBackgroundButton}
+                    onPress={pickWallpaperFromGallery}
+                  >
+                    <MaterialIcons name="add-photo-alternate" size={48} color={colors.textSecondary} />
+                    <Text style={styles.selectBackgroundText}>Tap to select your lockscreen image</Text>
+                  </TouchableOpacity>
+                )}
 
-            {/* Drawing Canvas - only renders brush strokes */}
-            {wallpaperUri && (
-              <View style={styles.drawingLayer}>
-                <DrawingCanvas
-                  strokes={strokes.filter(s => s.type !== 'text')}
-                  onStrokesChange={(newStrokes) => {
-                    // Merge brush strokes with existing text strokes
-                    const textStrokes = strokes.filter(s => s.type === 'text');
-                    handleStrokesChange([...textStrokes, ...newStrokes]);
-                  }}
-                  currentColor={currentColor}
-                  brushSize={brushSize}
-                  isEraser={selectedTool === 'eraser'}
-                  isTextTool={selectedTool === 'text'}
-                  onTextTap={handleTextTap}
-                />
-
-                {/* Draggable Text Elements */}
-                {strokes
-                  .filter((s) => s.type === 'text')
-                  .map((textStroke) => (
-                    <DraggableText
-                      key={textStroke.id}
-                      id={textStroke.id}
-                      initialText={textStroke.text || ''}
-                      initialX={textStroke.x || 0}
-                      initialY={textStroke.y || 0}
-                      initialFontSize={textStroke.fontSize || 20}
-                      initialColor={textStroke.color}
-                      initialRotation={textStroke.rotation || 0}
-                      initialScale={textStroke.scale || 1}
-                      isSelected={selectedTextId === textStroke.id}
-                      onSelect={handleTextSelect}
-                      onDeselect={handleTextDeselect}
-                      onTextChange={handleDraggableTextChange}
-                      onPositionChange={handleTextPositionChange}
-                      onTransformChange={handleTextTransformChange}
-                      onDelete={handleTextDeleteFromDraggable}
-                      onFontSizeChange={(id, size) => {
-                        const updated = strokes.map(s => s.id === id ? { ...s, fontSize: size } : s);
-                        setStrokes(updated);
+                {/* Drawing Canvas - only renders brush strokes */}
+                {wallpaperUri && (
+                  <View style={styles.drawingLayer}>
+                    <DrawingCanvas
+                      strokes={strokes.filter(s => s.type !== 'text')}
+                      onStrokesChange={(newStrokes) => {
+                        // Merge brush strokes with existing text strokes
+                        const textStrokes = strokes.filter(s => s.type === 'text');
+                        handleStrokesChange([...textStrokes, ...newStrokes]);
                       }}
-                      onColorChange={(id, color) => {
-                        const updated = strokes.map(s => s.id === id ? { ...s, color } : s);
-                        setStrokes(updated);
-                      }}
+                      currentColor={currentColor}
+                      brushSize={brushSize}
+                      isEraser={selectedTool === 'eraser'}
+                      isTextTool={selectedTool === 'text'}
+                      onTextTap={handleTextTap}
                     />
-                  ))}
+
+                    {/* Draggable Text Elements */}
+                    {strokes
+                      .filter((s) => s.type === 'text')
+                      .map((textStroke) => (
+                        <DraggableText
+                          key={textStroke.id}
+                          id={textStroke.id}
+                          initialText={textStroke.text || ''}
+                          initialX={textStroke.x || 0}
+                          initialY={textStroke.y || 0}
+                          initialFontSize={textStroke.fontSize || 20}
+                          initialColor={textStroke.color}
+                          initialRotation={textStroke.rotation || 0}
+                          initialScale={textStroke.scale || 1}
+                          isSelected={selectedTextId === textStroke.id}
+                          onSelect={handleTextSelect}
+                          onDeselect={handleTextDeselect}
+                          onTextChange={handleDraggableTextChange}
+                          onPositionChange={handleTextPositionChange}
+                          onTransformChange={handleTextTransformChange}
+                          onDelete={handleTextDeleteFromDraggable}
+                          onFontSizeChange={(id, size) => {
+                            const updated = strokes.map(s => s.id === id ? { ...s, fontSize: size } : s);
+                            setStrokes(updated);
+                          }}
+                          onColorChange={(id, color) => {
+                            const updated = strokes.map(s => s.id === id ? { ...s, color } : s);
+                            setStrokes(updated);
+                          }}
+                        />
+                      ))}
+                  </View>
+                )}
+              </View>
+
+              {/* Change Background Button - OUTSIDE canvas ref so it's not captured */}
+              {wallpaperUri && (
+                <TouchableOpacity
+                  style={styles.changeBackgroundButton}
+                  onPress={pickWallpaperFromGallery}
+                >
+                  <MaterialIcons name="image" size={20} color={colors.white} />
+                </TouchableOpacity>
+              )}
+
+              {/* Draft Badge - OUTSIDE canvas ref so it's not captured */}
+              {isDraft && strokes.length > 0 && (
+                <View style={styles.draftBadge}>
+                  <MaterialIcons name="edit" size={12} color={colors.white} />
+                  <Text style={styles.draftBadgeText}>Draft</Text>
+                </View>
+              )}
+            </View>
+
+            {/* Saving/Sending Overlay - outside canvas ref so it's not captured */}
+            {(isSaving || isSending) && (
+              <View style={styles.savingOverlay}>
+                <ActivityIndicator size="large" color={colors.primary} />
+                <Text style={styles.savingText}>
+                  {isSending ? 'Sending to partner...' : 'Saving...'}
+                </Text>
               </View>
             )}
           </View>
 
-          {/* Change Background Button - OUTSIDE canvas ref so it's not captured */}
-          {wallpaperUri && (
-            <TouchableOpacity
-              style={styles.changeBackgroundButton}
-              onPress={pickWallpaperFromGallery}
-            >
-              <MaterialIcons name="image" size={20} color={colors.white} />
-            </TouchableOpacity>
-          )}
+          {/* Page 2: Partner's Drawing (Read-Only) */}
+          <View style={styles.canvasPage}>
+            <View style={styles.canvasPositioner}>
+              <View
+                style={[
+                  styles.canvasContainer,
+                  {
+                    aspectRatio: screenAspectRatio,
+                    flex: undefined,
+                    maxHeight: '100%',
+                  },
+                ]}
+              >
+                {/* Wallpaper Background */}
+                {wallpaperUri ? (
+                  <Image
+                    source={{ uri: wallpaperUri }}
+                    style={styles.wallpaperBackground}
+                    resizeMode="cover"
+                  />
+                ) : (
+                  <TouchableOpacity
+                    style={styles.selectBackgroundButton}
+                    onPress={pickWallpaperFromGallery}
+                  >
+                    <MaterialIcons name="add-photo-alternate" size={48} color={colors.textSecondary} />
+                    <Text style={styles.selectBackgroundText}>Tap to select your lockscreen image</Text>
+                  </TouchableOpacity>
+                )}
 
-          {/* Draft Badge - OUTSIDE canvas ref so it's not captured */}
-          {isDraft && strokes.length > 0 && (
-            <View style={styles.draftBadge}>
-              <MaterialIcons name="edit" size={12} color={colors.white} />
-              <Text style={styles.draftBadgeText}>Draft</Text>
+                {/* Partner's Canvas */}
+                {wallpaperUri && partnerStrokes.length > 0 && (
+                  <ReadOnlyCanvas
+                    strokes={partnerStrokes}
+                    width={canvasDimensions.width}
+                    height={canvasDimensions.height}
+                  />
+                )}
+                {wallpaperUri && partnerStrokes.length === 0 && (
+                  <View style={styles.emptyStateContainer}>
+                    <Text style={styles.emptyStateText}>Waiting for partner's drawing...</Text>
+                  </View>
+                )}
+              </View>
             </View>
-          )}
-        </View>
-
-        {/* Saving/Sending Overlay - outside canvas ref so it's not captured */}
-        {(isSaving || isSending) && (
-          <View style={styles.savingOverlay}>
-            <ActivityIndicator size="large" color={colors.primary} />
-            <Text style={styles.savingText}>
-              {isSending ? 'Sending to partner...' : 'Saving...'}
-            </Text>
           </View>
-        )}
+        </ScrollView>
+        </GestureDetector>
       </View>
 
       {/* Seen Status Indicator */}
@@ -1096,14 +1223,25 @@ export const SharedCanvasScreen: React.FC<SharedCanvasScreenProps> = ({
             </View>
 
             {/* Tool Bar */}
-            <ToolBar
-              selectedTool={selectedTool}
-              onToolSelect={handleToolSelect}
-              onUndo={undoLastStroke}
-              onDone={handleDone}
-              canUndo={strokes.length > 0}
-              doneLabel={isPaired ? 'Send' : 'Save'}
-            />
+            <View style={styles.toolbarWrapper}>
+              <ToolBar
+                selectedTool={selectedTool}
+                onToolSelect={handleToolSelect}
+                onUndo={undoLastStroke}
+                onDone={handleDone}
+                canUndo={strokes.length > 0}
+                doneLabel={isPaired ? 'Send' : 'Save'}
+              />
+              {(strokes.length > 0 || partnerStrokes.length > 0) && (
+                <TouchableOpacity
+                  style={styles.clearAllButton}
+                  onPress={handleClearAll}
+                >
+                  <MaterialIcons name="delete-outline" size={20} color={colors.white} />
+                  <Text style={styles.clearAllText}>Clear All</Text>
+                </TouchableOpacity>
+              )}
+            </View>
           </>
         )}
       </View>
@@ -1123,6 +1261,42 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     gap: spacing.sm,
   },
+  sideNavButton: {
+    position: 'absolute',
+    left: spacing.md,
+    top: '50%',
+    zIndex: 10,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: -22,
+  },
+  sideNavButtonRight: {
+    left: undefined,
+    right: spacing.md,
+  },
+  toolbarWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  clearAllButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: borderRadius.default,
+    backgroundColor: 'rgba(244, 67, 54, 0.8)',
+  },
+  clearAllText: {
+    color: colors.white,
+    fontSize: 12,
+    fontWeight: '600',
+  },
   partnerDot: {
     width: 8,
     height: 8,
@@ -1137,12 +1311,19 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+  },
+  canvasScroll: {
+    flex: 1,
+  },
+  canvasPage: {
+    width: SCREEN_WIDTH,
+    justifyContent: 'center',
+    alignItems: 'center',
     paddingVertical: spacing.sm,
   },
   canvasPositioner: {
     position: 'relative',
-    width: '100%',
     maxHeight: '100%',
     justifyContent: 'center',
     alignItems: 'center',
@@ -1239,6 +1420,16 @@ const styles = StyleSheet.create({
     ...typography.caption,
     color: colors.success,
     fontWeight: '500',
+  },
+  emptyStateContainer: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  emptyStateText: {
+    ...typography.body,
+    color: colors.textSecondary,
+    textAlign: 'center',
   },
   colorPickerContainer: {
     paddingVertical: spacing.xs,

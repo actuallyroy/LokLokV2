@@ -13,6 +13,9 @@ interface CanvasState {
   customColors: string[];
   isDraft: boolean;
 
+  // Partner drawing state
+  partnerStrokes: Stroke[];
+
   // Seen status
   lastSentAt: string | null;
   isSeenByPartner: boolean;
@@ -24,6 +27,7 @@ interface CanvasState {
   mergeStrokes: (incomingStrokes: Stroke[]) => void;
   undoLastStroke: () => void;
   clearCanvas: () => void;
+  setPartnerStrokes: (strokes: Stroke[]) => void;
   markAsSent: () => void;
   setCurrentColor: (color: string) => void;
   setBrushSize: (size: number) => void;
@@ -44,6 +48,7 @@ export const useCanvasStore = create<CanvasState>()(
       selectedTool: 'brush',
       customColors: [],
       isDraft: false,
+      partnerStrokes: [],
       lastSentAt: null,
       isSeenByPartner: false,
       seenAt: null,
@@ -69,12 +74,15 @@ export const useCanvasStore = create<CanvasState>()(
 
       clearCanvas: () => set({ strokes: [], isDraft: false }),
 
+      setPartnerStrokes: (strokes) => set({ partnerStrokes: strokes }),
+
       markAsSent: () =>
         set({
           isDraft: false,
           lastSentAt: new Date().toISOString(),
           isSeenByPartner: false,
           seenAt: null,
+          partnerStrokes: [],
         }),
 
       setCurrentColor: (color) => set({ currentColor: color }),

@@ -91,7 +91,7 @@ android {
         applicationId 'com.loklok.app'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 15
+        versionCode 16
         versionName "1.0.20"
 
     }
@@ -101,6 +101,12 @@ android {
             storePassword 'android'
             keyAlias 'androiddebugkey'
             keyPassword 'android'
+        }
+        release {
+            storeFile file(findProperty('LOKLOK_RELEASE_STORE_FILE') ?: 'release.keystore')
+            storePassword findProperty('LOKLOK_RELEASE_STORE_PASSWORD') ?: ''
+            keyAlias findProperty('LOKLOK_RELEASE_KEY_ALIAS') ?: ''
+            keyPassword findProperty('LOKLOK_RELEASE_KEY_PASSWORD') ?: ''
         }
     }
     buildTypes {
@@ -113,7 +119,7 @@ android {
         release {
             // Caution! In production, you need to generate your own keystore file.
             // see https://reactnative.dev/docs/signed-apk-android.
-            signingConfig signingConfigs.debug
+            signingConfig signingConfigs.release
             shrinkResources (findProperty('android.enableShrinkResourcesInReleaseBuilds')?.toBoolean() ?: false)
             minifyEnabled enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
